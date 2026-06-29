@@ -37,10 +37,18 @@ export default function Diet() {
   const [mealDaySaved, setMealDaySaved] = useState(null)
   const [mealHistory, setMealHistory] = useState([])
 
+  // Meal history edit/delete
+  const [editingMealHistory, setEditingMealHistory] = useState(null)
+  const [deletingMealEntry, setDeletingMealEntry] = useState(null)
+
   // Supplements
   const [supplementLog, setSupplementLog] = useState({})
   const [suppDaySaved, setSuppDaySaved] = useState(null)
   const [suppHistory, setSuppHistory] = useState([])
+
+  // Supplement history edit/delete
+  const [editingSuppHistory, setEditingSuppHistory] = useState(null)
+  const [deletingSuppEntry, setDeletingSuppEntry] = useState(null)
 
   // Shopping
   const [checked, setChecked] = useState({})
@@ -56,13 +64,13 @@ export default function Diet() {
     fetchSuppHistory()
   }, [])
 
+  // ── Fetch functions ──────────────────────────────────
+
   async function fetchSupplements() {
     const { data } = await supabase.from('supplement_logs').select('*').eq('log_date', todayStr).single()
     if (data) {
-      // Only load ticks if today isn't already saved (saved = locked into history)
       if (!data.saved) setSupplementLog(data.supplements || {})
     } else {
-      // No row for today — auto-save yesterday's unsaved data if any was ticked
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
       const yStr = yesterday.toISOString().split('T')[0]
@@ -87,7 +95,6 @@ export default function Diet() {
   async function fetchTodayMealLog() {
     const { data } = await supabase.from('meal_logs').select('*').eq('log_date', todayStr).single()
     if (data) {
-      // Only restore ticks if today hasn't been saved yet (saved = locked into history)
       if (!data.saved) {
         const ticks = {}
         ;(data.meals_eaten || []).forEach(id => { ticks[id] = true })
@@ -95,7 +102,6 @@ export default function Diet() {
         setEatOuts(data.eat_out || [])
       }
     } else {
-      // No row for today — auto-save yesterday's unsaved data if any was ticked
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
       const yStr = yesterday.toISOString().split('T')[0]
@@ -107,20 +113,18 @@ export default function Diet() {
   }
 
   async function fetchMealHistory() {
-    // Include today if it was saved — no date filter needed
     const { data } = await supabase.from('meal_logs').select('*')
       .eq('saved', true)
       .order('log_date', { ascending: false })
-      .limit(30)
+      .limit(60)
     if (data) setMealHistory(data)
   }
 
   async function fetchSuppHistory() {
-    // Only show days explicitly saved; include today if saved
     const { data } = await supabase.from('supplement_logs').select('*')
       .eq('saved', true)
       .order('log_date', { ascending: false })
-      .limit(30)
+      .limit(60)
     if (data) setSuppHistory(data)
   }
 
@@ -162,12 +166,32 @@ export default function Diet() {
       { onConflict: 'log_date' }
     )
     if (error) { alert('Save failed: ' + error.message); setMealDaySaved(null); return }
-    // Reset today's active state — day is locked
     setMealTicks({})
     setEatOuts([])
     await fetchMealHistory()
     setMealDaySaved('done')
     setTimeout(() => setMealDaySaved(null), 2500)
+  }
+
+  // ── Meal history edit/delete ─────────────────────────
+
+  async function updateMealHistory(logDate, updatedTicks, updatedEatOuts) {
+    const mealsEaten = Object.entries(updatedTicks).filter(([, v]) => v).map(([k]) => Number(k))
+    const totals = computeConsumed(meals, updatedTicks, updatedEatOuts)
+    const { error } = await supabase.from('meal_logs').upsert(
+      { log_date: logDate, meals_eaten: mealsEaten, eat_out: updatedEatOuts, ...totals, saved: true },
+      { onConflict: 'log_date' }
+    )
+    if (error) { alert('Update failed: ' + error.message); return }
+    setEditingMealHistory(null)
+    await fetchMealHistory()
+  }
+
+  async function deleteMealHistory(logDate) {
+    const { error } = await supabase.from('meal_logs').delete().eq('log_date', logDate)
+    if (error) { alert('Delete failed: ' + error.message); return }
+    setDeletingMealEntry(null)
+    setMealHistory(prev => prev.filter(e => e.log_date !== logDate))
   }
 
   // ── Meal plan edit actions ───────────────────────────
@@ -191,7 +215,6 @@ export default function Diet() {
   async function toggleSupplement(id) {
     const updated = { ...supplementLog, [id]: !supplementLog[id] }
     setSupplementLog(updated)
-    // saved: false marks this as in-progress (not yet locked into history)
     await supabase.from('supplement_logs').upsert({ log_date: todayStr, supplements: updated, saved: false }, { onConflict: 'log_date' })
   }
 
@@ -202,11 +225,29 @@ export default function Diet() {
       { onConflict: 'log_date' }
     )
     if (error) { alert('Save failed: ' + error.message); setSuppDaySaved(null); return }
-    // Reset today's active state — day is locked
     setSupplementLog({})
     await fetchSuppHistory()
     setSuppDaySaved('done')
     setTimeout(() => setSuppDaySaved(null), 2500)
+  }
+
+  // ── Supplement history edit/delete ───────────────────
+
+  async function updateSuppHistory(logDate, updatedSupps) {
+    const { error } = await supabase.from('supplement_logs').upsert(
+      { log_date: logDate, supplements: updatedSupps, saved: true },
+      { onConflict: 'log_date' }
+    )
+    if (error) { alert('Update failed: ' + error.message); return }
+    setEditingSuppHistory(null)
+    await fetchSuppHistory()
+  }
+
+  async function deleteSuppHistory(logDate) {
+    const { error } = await supabase.from('supplement_logs').delete().eq('log_date', logDate)
+    if (error) { alert('Delete failed: ' + error.message); return }
+    setDeletingSuppEntry(null)
+    setSuppHistory(prev => prev.filter(e => e.log_date !== logDate))
   }
 
   const tabs = [
@@ -246,7 +287,6 @@ export default function Diet() {
 
           {mealView === 'today' ? (
             <>
-              {/* Running macro totals */}
               <div className="bg-[#1e1e2a] rounded-2xl p-4 border border-white/5 mb-4">
                 <div className="flex justify-between items-center mb-3">
                   <p className="text-white font-semibold text-sm">Today's macros</p>
@@ -271,7 +311,6 @@ export default function Diet() {
                 </div>
               </div>
 
-              {/* Meal tick cards */}
               <div className="space-y-2 mb-3">
                 {meals.map(meal => (
                   <MealLogCard
@@ -286,7 +325,6 @@ export default function Diet() {
                 ))}
               </div>
 
-              {/* Eat-out entries */}
               {eatOuts.length > 0 && (
                 <div className="space-y-2 mb-3">
                   {eatOuts.map((entry, i) => (
@@ -327,7 +365,12 @@ export default function Diet() {
                   </p>
                 </div>
               ) : mealHistory.map(log => (
-                <MealHistoryCard key={log.id} log={log} />
+                <MealHistoryCard
+                  key={log.id}
+                  log={log}
+                  onEdit={() => setEditingMealHistory(log)}
+                  onDelete={() => setDeletingMealEntry(log)}
+                />
               ))}
             </div>
           )}
@@ -387,11 +430,16 @@ export default function Diet() {
                   <p className="text-4xl mb-3">💊</p>
                   <p className="text-white font-semibold">No history yet</p>
                   <p className="text-gray-400 text-sm mt-1 max-w-xs mx-auto">
-                    Tick your supplements — each day appears here automatically
+                    Tick your supplements and save — each day appears here
                   </p>
                 </div>
               ) : suppHistory.map(log => (
-                <SuppHistoryCard key={log.id} log={log} />
+                <SuppHistoryCard
+                  key={log.id}
+                  log={log}
+                  onEdit={() => setEditingSuppHistory(log)}
+                  onDelete={() => setDeletingSuppEntry(log)}
+                />
               ))}
             </div>
           )}
@@ -401,16 +449,47 @@ export default function Diet() {
       {activeTab === 'prep' && <PrepTab />}
       {activeTab === 'shop' && <ShopTab checked={checked} setChecked={setChecked} />}
 
+      {/* ── Modals ── */}
       {eatOutModal && (
         <EatOutModal onSave={addEatOut} onClose={() => setEatOutModal(false)} />
       )}
-
       {editingMeal && (
         <MealEditModal
           meal={editingMeal}
           onSave={saveMealEdit}
           onClose={() => setEditingMeal(null)}
           saving={planSaving}
+        />
+      )}
+      {editingMealHistory && (
+        <MealHistoryEditModal
+          log={editingMealHistory}
+          meals={meals}
+          onSave={(ticks, eos) => updateMealHistory(editingMealHistory.log_date, ticks, eos)}
+          onClose={() => setEditingMealHistory(null)}
+        />
+      )}
+      {deletingMealEntry && (
+        <ConfirmModal
+          message={`Delete ${fmtDate(deletingMealEntry.log_date)}?`}
+          detail="This permanently removes this day's meal log."
+          onConfirm={() => deleteMealHistory(deletingMealEntry.log_date)}
+          onCancel={() => setDeletingMealEntry(null)}
+        />
+      )}
+      {editingSuppHistory && (
+        <SuppHistoryEditModal
+          log={editingSuppHistory}
+          onSave={(supps) => updateSuppHistory(editingSuppHistory.log_date, supps)}
+          onClose={() => setEditingSuppHistory(null)}
+        />
+      )}
+      {deletingSuppEntry && (
+        <ConfirmModal
+          message={`Delete ${fmtDate(deletingSuppEntry.log_date)}?`}
+          detail="This permanently removes this day's supplement log."
+          onConfirm={() => deleteSuppHistory(deletingSuppEntry.log_date)}
+          onCancel={() => setDeletingSuppEntry(null)}
         />
       )}
     </div>
@@ -472,6 +551,14 @@ function MacroProgressBar({ label, consumed, target, color }) {
   )
 }
 
+function CloseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 // ── Meal log card (today) ───────────────────────────────
 
 function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
@@ -481,17 +568,10 @@ function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
       ticked ? 'border-emerald-500/20' : 'border-white/5'
     }`}>
       <div className="flex items-center gap-3 px-4 py-3.5">
-        <button
-          onClick={onTick}
-          className="shrink-0"
-          aria-label={ticked ? 'Untick meal' : 'Tick meal'}
-        >
+        <button onClick={onTick} className="shrink-0" aria-label={ticked ? 'Untick meal' : 'Tick meal'}>
           <CheckCircle checked={ticked} />
         </button>
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="flex-1 flex items-center gap-2.5 text-left min-w-0"
-        >
+        <button onClick={() => setOpen(o => !o)} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
           <span className="text-xl shrink-0">{meal.emoji}</span>
           <div className="min-w-0">
             <p className={`text-sm font-semibold ${ticked ? 'text-white' : 'text-gray-400'}`}>{meal.name}</p>
@@ -499,14 +579,10 @@ function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
           </div>
         </button>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-600 hidden sm:block">
-            P{meal.protein} C{meal.carbs} F{meal.fat}
-          </span>
-          <svg
-            className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
+          <span className="text-xs text-gray-600 hidden sm:block">P{meal.protein} C{meal.carbs} F{meal.fat}</span>
+          <svg className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
             width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-            onClick={() => setOpen(o => !o)}
-          >
+            onClick={() => setOpen(o => !o)}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -548,11 +624,13 @@ function EatOutEntry({ entry, onRemove }) {
     <div className="bg-[#1e1e2a] rounded-2xl border border-amber-500/20 px-4 py-3">
       <div className="flex items-center justify-between mb-1.5">
         <p className="text-amber-300 text-sm font-medium">🍴 {entry.name || 'Eat out'}</p>
-        <button onClick={onRemove} className="text-gray-500 p-0.5 active:text-gray-300">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        {onRemove && (
+          <button onClick={onRemove} className="text-gray-500 p-0.5 active:text-gray-300">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
       <div className="flex gap-3 text-xs text-gray-400">
         <span>P <span className="text-white">{entry.protein}g</span></span>
@@ -566,7 +644,7 @@ function EatOutEntry({ entry, onRemove }) {
 
 // ── Meal history card ───────────────────────────────────
 
-function MealHistoryCard({ log }) {
+function MealHistoryCard({ log, onEdit, onDelete }) {
   const [open, setOpen] = useState(false)
   const dateStr = fmtDate(log.log_date)
   const mealsEaten = log.meals_eaten || []
@@ -578,17 +656,14 @@ function MealHistoryCard({ log }) {
   const protDiff = log.protein  - MACRO_TARGETS.protein
 
   const flags = []
-  if (calDiff > CAL_THRESH)          flags.push({ text: `Over by ${calDiff} kcal`,         color: 'text-amber-400' })
-  else if (calDiff < -CAL_THRESH)    flags.push({ text: `Under by ${Math.abs(calDiff)} kcal`, color: 'text-yellow-500' })
+  if (calDiff > CAL_THRESH)          flags.push({ text: `Over by ${calDiff} kcal`,              color: 'text-amber-400' })
+  else if (calDiff < -CAL_THRESH)    flags.push({ text: `Under by ${Math.abs(calDiff)} kcal`,   color: 'text-yellow-500' })
   if (protDiff < -PROT_THRESH)       flags.push({ text: `Protein short ${Math.abs(protDiff)}g`, color: 'text-orange-400' })
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-4 text-left"
-      >
-        <div className="flex-1 min-w-0 mr-3">
+      <div className="flex items-center px-4 py-4 gap-3">
+        <button onClick={() => setOpen(o => !o)} className="flex-1 text-left min-w-0">
           <p className="text-white font-semibold text-sm">{dateStr}</p>
           <p className="text-gray-400 text-xs mt-0.5">
             {mealsEaten.length}/{MEAL_PLAN.length} meals
@@ -602,14 +677,29 @@ function MealHistoryCard({ log }) {
               ))}
             </div>
           )}
+        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit() }}
+            className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1"
+          >
+            Edit
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1"
+          >
+            Delete
+          </button>
+          <svg
+            onClick={() => setOpen(o => !o)}
+            className={`text-gray-500 transition-transform cursor-pointer ${open ? 'rotate-180' : ''}`}
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
-        <svg
-          className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
-          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+      </div>
 
       {open && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
@@ -643,9 +733,190 @@ function MealHistoryCard({ log }) {
   )
 }
 
+// ── Meal history edit modal ─────────────────────────────
+
+function MealHistoryEditModal({ log, meals, onSave, onClose }) {
+  const [ticks, setTicks] = useState(() => {
+    const t = {}
+    ;(log.meals_eaten || []).forEach(id => { t[id] = true })
+    return t
+  })
+  const [localEatOuts, setLocalEatOuts] = useState(log.eat_out || [])
+  const [showEatOutForm, setShowEatOutForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const consumed = computeConsumed(meals, ticks, localEatOuts)
+
+  function toggleTick(mealId) {
+    setTicks(prev => ({ ...prev, [mealId]: !prev[mealId] }))
+  }
+
+  function addEatOut(entry) {
+    setLocalEatOuts(prev => [...prev, entry])
+    setShowEatOutForm(false)
+  }
+
+  function removeEatOut(idx) {
+    setLocalEatOuts(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(ticks, localEatOuts)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5 shrink-0">
+          <div>
+            <h2 className="text-white font-bold text-lg">Edit day</h2>
+            <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 active:text-white">
+            <CloseIcon />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+          {/* Live macro summary */}
+          <div className="bg-[#16161f] rounded-2xl p-4 border border-white/5">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-gray-400 text-xs font-medium uppercase tracking-widest">Macros</p>
+              <p className={`text-sm font-bold ${consumed.calories > MACRO_TARGETS.calories ? 'text-amber-400' : 'text-white'}`}>
+                {consumed.calories} <span className="text-gray-500 font-normal text-xs">/ {MACRO_TARGETS.calories} kcal</span>
+              </p>
+            </div>
+            <MacroProgressBar label="Protein" consumed={consumed.protein} target={MACRO_TARGETS.protein} color="#6366f1" />
+            <MacroProgressBar label="Carbs"   consumed={consumed.carbs}   target={MACRO_TARGETS.carbs}   color="#10b981" />
+            <MacroProgressBar label="Fat"     consumed={consumed.fat}     target={MACRO_TARGETS.fat}     color="#f59e0b" />
+          </div>
+
+          {/* Meal toggles */}
+          <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
+            {meals.map((meal, i) => (
+              <button
+                key={meal.id}
+                onClick={() => toggleTick(meal.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-white/5 ${
+                  i < meals.length - 1 ? 'border-b border-white/5' : ''
+                }`}
+              >
+                <CheckCircle checked={!!ticks[meal.id]} />
+                <span className="text-xl shrink-0">{meal.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${ticks[meal.id] ? 'text-white' : 'text-gray-400'}`}>{meal.name}</p>
+                  <p className="text-gray-500 text-xs">{meal.time} · {meal.calories} kcal</p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Eat-out entries */}
+          {localEatOuts.length > 0 && (
+            <div className="space-y-2">
+              {localEatOuts.map((entry, i) => (
+                <EatOutEntry key={i} entry={entry} onRemove={() => removeEatOut(i)} />
+              ))}
+            </div>
+          )}
+
+          {/* Inline eat-out form */}
+          {showEatOutForm ? (
+            <InlineEatOutForm onAdd={addEatOut} onCancel={() => setShowEatOutForm(false)} />
+          ) : (
+            <button
+              onClick={() => setShowEatOutForm(true)}
+              className="w-full py-3 rounded-2xl bg-white/5 text-amber-400 text-sm font-medium active:bg-white/10 border border-amber-500/20"
+            >
+              + Add eat-out entry
+            </button>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-6 pt-3 border-t border-white/5 shrink-0">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Inline eat-out form (used inside history edit modal) ─
+
+function InlineEatOutForm({ onAdd, onCancel }) {
+  const [name, setName] = useState('')
+  const [protein, setProtein] = useState('')
+  const [carbs, setCarbs] = useState('')
+  const [fat, setFat] = useState('')
+  const [calories, setCalories] = useState('')
+
+  function handleAdd() {
+    onAdd({
+      name: name.trim() || 'Eat out',
+      protein: Number(protein) || 0,
+      carbs: Number(carbs) || 0,
+      fat: Number(fat) || 0,
+      calories: Number(calories) || 0,
+    })
+  }
+
+  const hasAny = protein || carbs || fat || calories
+
+  return (
+    <div className="bg-[#1e1e2a] rounded-2xl border border-amber-500/20 p-4">
+      <p className="text-amber-300 text-xs font-semibold mb-3 uppercase tracking-widest">Eat-out entry</p>
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Meal name (optional)"
+        className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500 mb-3"
+      />
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {[
+          { label: 'Protein (g)', val: protein, set: setProtein },
+          { label: 'Carbs (g)',   val: carbs,   set: setCarbs },
+          { label: 'Fat (g)',     val: fat,      set: setFat },
+          { label: 'Calories',   val: calories, set: setCalories },
+        ].map(({ label, val, set }) => (
+          <div key={label}>
+            <p className="text-gray-500 text-xs mb-1">{label}</p>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={val}
+              onChange={e => set(e.target.value)}
+              placeholder="0"
+              className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium">Cancel</button>
+        <button onClick={handleAdd} disabled={!hasAny}
+          className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40">
+          Add
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Supplement history card ─────────────────────────────
 
-function SuppHistoryCard({ log }) {
+function SuppHistoryCard({ log, onEdit, onDelete }) {
   const [open, setOpen] = useState(false)
   const dateStr = fmtDate(log.log_date)
   const supps = log.supplements || {}
@@ -653,23 +924,35 @@ function SuppHistoryCard({ log }) {
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-4 text-left"
-      >
-        <div>
+      <div className="flex items-center px-4 py-4 gap-3">
+        <button onClick={() => setOpen(o => !o)} className="flex-1 text-left min-w-0">
           <p className="text-white font-semibold text-sm">{dateStr}</p>
           <p className={`text-xs mt-0.5 ${takenCount === SUPPLEMENTS.length ? 'text-emerald-400' : 'text-gray-400'}`}>
             {takenCount}/{SUPPLEMENTS.length} taken
           </p>
+        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit() }}
+            className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1"
+          >
+            Edit
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1"
+          >
+            Delete
+          </button>
+          <svg
+            onClick={() => setOpen(o => !o)}
+            className={`text-gray-500 transition-transform cursor-pointer ${open ? 'rotate-180' : ''}`}
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
-        <svg
-          className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
-          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+      </div>
 
       {open && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
@@ -689,7 +972,106 @@ function SuppHistoryCard({ log }) {
   )
 }
 
-// ── Eat-out modal ───────────────────────────────────────
+// ── Supplement history edit modal ───────────────────────
+
+function SuppHistoryEditModal({ log, onSave, onClose }) {
+  const [supps, setSupps] = useState({ ...(log.supplements || {}) })
+  const [saving, setSaving] = useState(false)
+  const takenCount = SUPPLEMENTS.filter(s => supps[s.id]).length
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(supps)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-white font-bold text-lg">Edit supplements</h2>
+            <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 active:text-white">
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden mb-3">
+          {SUPPLEMENTS.map((supp, i) => (
+            <button
+              key={supp.id}
+              onClick={() => setSupps(prev => ({ ...prev, [supp.id]: !prev[supp.id] }))}
+              className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors active:bg-white/5 ${
+                i < SUPPLEMENTS.length - 1 ? 'border-b border-white/5' : ''
+              }`}
+            >
+              <div className="flex items-center gap-3 text-left">
+                <span className="text-lg">{supp.icon}</span>
+                <div>
+                  <p className={`text-sm font-medium ${supps[supp.id] ? 'text-white' : 'text-gray-400'}`}>{supp.name}</p>
+                  <p className="text-gray-500 text-xs">{supp.timing}</p>
+                </div>
+              </div>
+              <CheckCircle checked={!!supps[supp.id]} />
+            </button>
+          ))}
+        </div>
+
+        <p className="text-center text-gray-500 text-xs mb-5">{takenCount}/{SUPPLEMENTS.length} taken</p>
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Confirm modal ───────────────────────────────────────
+
+function ConfirmModal({ message, detail, onConfirm, onCancel }) {
+  const [busy, setBusy] = useState(false)
+
+  async function handleConfirm() {
+    setBusy(true)
+    await onConfirm()
+    setBusy(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end">
+      <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
+      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl p-5">
+        <p className="text-white font-bold text-lg mb-1">{message}</p>
+        {detail && <p className="text-gray-400 text-sm mb-6">{detail}</p>}
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={busy}
+            className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
+          >
+            {busy ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Eat-out modal (for today's log) ────────────────────
 
 function EatOutModal({ onSave, onClose }) {
   const [name, setName] = useState('')
@@ -765,7 +1147,7 @@ function EatOutModal({ onSave, onClose }) {
   )
 }
 
-// ── Meal prep & shopping tabs (unchanged) ───────────────
+// ── Meal prep & shopping tabs ───────────────────────────
 
 function PrepTab() {
   const [open, setOpen] = useState(null)
@@ -901,7 +1283,7 @@ function ShopTab({ checked, setChecked }) {
   )
 }
 
-// ── Meal plan edit modal (unchanged) ────────────────────
+// ── Meal plan edit modal ─────────────────────────────────
 
 function MacroPill({ label, value, color }) {
   return (
@@ -926,9 +1308,7 @@ function MealEditModal({ meal, onSave, onClose, saving }) {
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-white font-bold text-lg">Edit — {meal.name}</h2>
           <button onClick={onClose} className="text-gray-400">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
         <div className="space-y-3 mb-4">
