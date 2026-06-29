@@ -1,8 +1,8 @@
 export const MACRO_TARGETS = {
-  calories: 2180,
-  protein: 155,
-  carbs: 260,
-  fat: 47,
+  calories: 2389,
+  protein: 172,
+  carbs: 286,
+  fat: 59,
 }
 
 export const MEAL_PLAN = [
@@ -31,12 +31,12 @@ export const MEAL_PLAN = [
       { name: 'Chicken breast mince (cooked)', amount: '135g' },
       { name: 'Jasmine rice (cooked)', amount: '280g' },
       { name: 'Mixed veggies (frozen)', amount: '150g' },
-      { name: 'Canola oil', amount: '10ml' },
+      { name: 'Canola oil', amount: '20ml' },
     ],
     protein: 50,
     carbs: 94,
-    fat: 16,
-    calories: 730,
+    fat: 25,
+    calories: 812,
   },
   {
     id: 3,
@@ -47,12 +47,12 @@ export const MEAL_PLAN = [
       { name: 'Chicken breast mince (cooked)', amount: '135g' },
       { name: 'Jasmine rice (cooked)', amount: '280g' },
       { name: 'Mixed veggies (frozen)', amount: '100g' },
-      { name: 'Canola oil', amount: '10ml' },
+      { name: 'Canola oil', amount: '20ml' },
     ],
     protein: 49,
     carbs: 89,
-    fat: 16,
-    calories: 700,
+    fat: 25,
+    calories: 782,
   },
   {
     id: 4,
@@ -78,11 +78,12 @@ export const MEAL_PLAN = [
     foods: [
       { name: 'Protein powder', amount: '1 scoop (30g)' },
       { name: 'Zymil low fat milk', amount: '250ml' },
+      { name: 'Banana (medium)', amount: '1 medium (~120g)' },
     ],
-    protein: 33,
-    carbs: 14,
+    protein: 34,
+    carbs: 39,
     fat: 3,
-    calories: 220,
+    calories: 325,
   },
 ]
 

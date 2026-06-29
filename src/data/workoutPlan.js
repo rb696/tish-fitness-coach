@@ -46,7 +46,7 @@ export const WORKOUT_DAYS = [
     id: 'pull',
     name: 'Pull',
     color: '#10b981',
-    totalSets: 13,
+    totalSets: 15,
     exercises: [
       {
         id: 'pull_1',
@@ -76,13 +76,20 @@ export const WORKOUT_DAYS = [
         repScheme: ['10', '10-14', '10-14', '10-14'],
         note: '',
       },
+      {
+        id: 'pull_face',
+        name: 'Face Pull',
+        sets: 2,
+        repScheme: ['12-15', '12-15'],
+        note: 'Rear delt and shoulder health — cable at head height, rope attachment',
+      },
     ],
   },
   {
     id: 'legs',
     name: 'Core & Legs',
     color: '#f59e0b',
-    totalSets: 13,
+    totalSets: 16,
     exercises: [
       {
         id: 'legs_1',
@@ -90,6 +97,13 @@ export const WORKOUT_DAYS = [
         sets: 4,
         repScheme: ['10', '6', '8-10', '8-10'],
         note: '',
+      },
+      {
+        id: 'legs_rdl',
+        name: 'Romanian Deadlift',
+        sets: 3,
+        repScheme: ['8-10', '8-10', '8-10'],
+        note: 'Hip hinge — posterior chain anchor. Control the descent, hinge at hips.',
       },
       {
         id: 'legs_2',
@@ -118,13 +132,20 @@ export const WORKOUT_DAYS = [
     id: 'chest_arms',
     name: 'Chest & Arms',
     color: '#ef4444',
-    totalSets: 15,
+    totalSets: 18,
     exercises: [
+      {
+        id: 'ca_row',
+        name: 'Chest-Supported Machine Row',
+        sets: 3,
+        repScheme: ['8-12', '8-12', '8-12'],
+        note: 'Opens the session — balances push:pull ratio. Full stretch at bottom, squeeze at top.',
+      },
       {
         id: 'ca_1',
         name: 'Hammer Strength Horizontal Chest Press',
         sets: 5,
-        repScheme: ['10', '6', '4', '6-10', '6-10'],
+        repScheme: ['10', '6', '6-8', '6-10', '6-10'],
         note: 'Primary chest movement — shoulder safe',
       },
       {

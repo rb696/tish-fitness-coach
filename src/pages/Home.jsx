@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { MACRO_TARGETS, MEAL_PLAN, SUPPLEMENTS } from '../data/mealPlan'
 import { WORKOUT_DAYS } from '../data/workoutPlan'
 import { supabase } from '../lib/supabase'
+import { computeProgression } from '../lib/progression'
 
 const DAY_ORDER = ['push', 'pull', 'legs', 'chest_arms']
 
@@ -18,6 +19,7 @@ export default function Home() {
   const navigate = useNavigate()
   const [weightLogs, setWeightLogs] = useState([])
   const [supplementLog, setSupplementLog] = useState({})
+  const [progressionData, setProgressionData] = useState([])
   const todayWorkout = getTodayWorkout()
   const today = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })
 
@@ -27,10 +29,21 @@ export default function Home() {
 
   async function fetchData() {
     const todayStr = new Date().toISOString().split('T')[0]
-    const { data: wl } = await supabase.from('weight_logs').select('*').order('logged_date', { ascending: false }).limit(5)
-    const { data: sl } = await supabase.from('supplement_logs').select('*').eq('log_date', todayStr).single()
+    const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const [{ data: wl }, { data: sl }, { data: allRatings }, { data: histData }] = await Promise.all([
+      supabase.from('weight_logs').select('*').order('logged_date', { ascending: false }).limit(5),
+      supabase.from('supplement_logs').select('*').eq('log_date', todayStr).single(),
+      supabase.from('set_ratings').select('*').gte('log_date', thirtyAgo),
+      supabase.from('exercise_weight_history').select('*').order('log_date', { ascending: false }).limit(100),
+    ])
+
     if (wl) setWeightLogs(wl)
     if (sl) setSupplementLog(sl.supplements || {})
+    if (allRatings && histData) {
+      const prog = computeProgression(allRatings, histData)
+      setProgressionData(Object.values(prog))
+    }
   }
 
   const latestWeight = weightLogs[0]?.weight_kg ?? 73
@@ -80,6 +93,12 @@ export default function Home() {
             <p className="text-gray-400 text-sm mt-1">Hit your 10k steps and recover well</p>
           </div>
         )}
+      </div>
+
+      {/* Progressive overload summary */}
+      <div className="mb-6">
+        <SectionTitle>Progressive Overload</SectionTitle>
+        <ProgressionWidget data={progressionData} />
       </div>
 
       {/* Macro snapshot */}
@@ -164,6 +183,64 @@ function NextMealCard({ onClick }) {
       </div>
       <p className="text-indigo-400 text-sm mt-3 font-medium">View meal plan →</p>
     </button>
+  )
+}
+
+function ProgressionWidget({ data }) {
+  const toIncrease = data.filter(d => d.status === 'increase')
+  const toReview   = data.filter(d => d.status === 'review')
+  const onTrack    = data.filter(d => d.status === 'ok')
+
+  if (data.length === 0) {
+    return (
+      <div className="bg-[#1e1e2a] rounded-2xl p-4 border border-white/5">
+        <p className="text-gray-500 text-sm">Rate your sets during training — progression flags will appear here.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[#1e1e2a] rounded-2xl p-4 border border-white/5 space-y-4">
+      {toIncrease.length > 0 && (
+        <div>
+          <p className="text-emerald-400 text-[10px] font-bold tracking-widest mb-2">INCREASE THIS WEEK</p>
+          {toIncrease.map(d => (
+            <div key={d.exerciseId} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+              <div className="flex-1 min-w-0 mr-3">
+                <p className="text-white text-sm font-medium truncate">{d.exerciseName}</p>
+                <p className="text-gray-500 text-xs">{d.reason}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-emerald-400 text-sm font-bold">+{d.increase}kg</p>
+                {d.suggested != null && (
+                  <p className="text-gray-500 text-xs">→ {d.suggested}kg</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {toReview.length > 0 && (
+        <div>
+          <p className="text-amber-400 text-[10px] font-bold tracking-widest mb-2">NEEDS REVIEW</p>
+          {toReview.map(d => (
+            <div key={d.exerciseId} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+              <div className="flex-1 min-w-0 mr-3">
+                <p className="text-white text-sm font-medium truncate">{d.exerciseName}</p>
+                <p className="text-gray-500 text-xs">{d.reason}</p>
+              </div>
+              <p className="text-amber-400 text-xs font-medium shrink-0">Hold weight</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+        <p className="text-gray-500 text-xs">{onTrack.length} exercise{onTrack.length !== 1 ? 's' : ''} on track</p>
+      </div>
+    </div>
   )
 }
 
