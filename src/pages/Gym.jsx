@@ -37,19 +37,25 @@ export default function Gym() {
   async function saveSetWeight(exerciseId, setNumber, weight) {
     const current = weights[exerciseId] || {}
     const updated = { ...current, [setNumber]: weight }
-    await supabase.from('exercise_weights').upsert(
+    const { error } = await supabase.from('exercise_weights').upsert(
       { exercise_id: exerciseId, weights: updated },
       { onConflict: 'exercise_id' }
     )
+    if (error) {
+      console.error('saveSetWeight failed:', error.message, error)
+      alert(`Save failed: ${error.message}`)
+      return
+    }
     setWeights(prev => ({ ...prev, [exerciseId]: updated }))
   }
 
   async function saveComment(exerciseId, comment) {
     const todayStr = new Date().toISOString().split('T')[0]
-    await supabase.from('exercise_comments').upsert(
+    const { error } = await supabase.from('exercise_comments').upsert(
       { exercise_id: exerciseId, comment, log_date: todayStr },
       { onConflict: ['exercise_id', 'log_date'] }
     )
+    if (error) { console.error('saveComment failed:', error.message, error); return }
     setLogs(prev => ({ ...prev, [exerciseId]: comment }))
     setCommentModal(null)
   }

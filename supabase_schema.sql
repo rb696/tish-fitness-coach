@@ -8,11 +8,11 @@ create table if not exists weight_logs (
   created_at timestamptz default now()
 );
 
--- Exercise working weights (synced across devices)
+-- Exercise working weights — per-set JSONB e.g. {"1": 80, "2": 85, "3": 90}
 create table if not exists exercise_weights (
   id uuid default gen_random_uuid() primary key,
   exercise_id text not null unique,
-  weight_kg decimal(6,2) not null,
+  weights jsonb not null default '{}',
   updated_at timestamptz default now()
 );
 
