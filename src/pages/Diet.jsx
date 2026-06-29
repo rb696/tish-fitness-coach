@@ -10,6 +10,7 @@ export default function Diet() {
   const [meals, setMeals] = useState(MEAL_PLAN)
   const [saving, setSaving] = useState(false)
   const [checked, setChecked] = useState({})
+  const [overriddenIds, setOverriddenIds] = useState(new Set())
   const todayStr = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -26,9 +27,18 @@ export default function Diet() {
     const { data } = await supabase.from('meal_overrides').select('*')
     if (data && data.length > 0) {
       const overrides = {}
-      data.forEach(r => { overrides[r.meal_id] = r })
+      const ids = new Set()
+      data.forEach(r => { overrides[r.meal_id] = r; ids.add(r.meal_id) })
+      setOverriddenIds(ids)
       setMeals(MEAL_PLAN.map(m => overrides[m.id] ? { ...m, ...overrides[m.id] } : m))
     }
+  }
+
+  async function resetMeal(mealId) {
+    await supabase.from('meal_overrides').delete().eq('meal_id', mealId)
+    const defaultMeal = MEAL_PLAN.find(m => m.id === mealId)
+    setMeals(prev => prev.map(m => m.id === mealId ? defaultMeal : m))
+    setOverriddenIds(prev => { const next = new Set(prev); next.delete(mealId); return next })
   }
 
   async function toggleSupplement(id) {
@@ -79,7 +89,13 @@ export default function Diet() {
       {activeTab === 'meals' && (
         <div className="px-4 space-y-4">
           {meals.map(meal => (
-            <MealCard key={meal.id} meal={meal} onEdit={() => setEditingMeal(meal)} />
+            <MealCard
+              key={meal.id}
+              meal={meal}
+              onEdit={() => setEditingMeal(meal)}
+              isOverridden={overriddenIds.has(meal.id)}
+              onReset={() => resetMeal(meal.id)}
+            />
           ))}
         </div>
       )}
@@ -271,7 +287,7 @@ function ShopTab({ checked, setChecked }) {
   )
 }
 
-function MealCard({ meal, onEdit }) {
+function MealCard({ meal, onEdit, isOverridden, onReset }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
@@ -307,6 +323,11 @@ function MealCard({ meal, onEdit }) {
           <button onClick={onEdit} className="w-full py-2 rounded-xl bg-white/5 text-indigo-400 text-sm font-medium active:bg-white/10">
             Edit this meal
           </button>
+          {isOverridden && (
+            <button onClick={onReset} className="w-full mt-2 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium active:bg-white/10">
+              Reset to default
+            </button>
+          )}
         </div>
       )}
     </div>
