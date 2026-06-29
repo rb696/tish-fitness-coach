@@ -58,7 +58,19 @@ export default function Diet() {
 
   async function fetchSupplements() {
     const { data } = await supabase.from('supplement_logs').select('*').eq('log_date', todayStr).single()
-    if (data) setSupplementLog(data.supplements || {})
+    if (data) {
+      // Only load ticks if today isn't already saved (saved = locked into history)
+      if (!data.saved) setSupplementLog(data.supplements || {})
+    } else {
+      // No row for today — auto-save yesterday's unsaved data if any was ticked
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yStr = yesterday.toISOString().split('T')[0]
+      const { data: yd } = await supabase.from('supplement_logs').select('*').eq('log_date', yStr).single()
+      if (yd && !yd.saved && Object.values(yd.supplements || {}).some(Boolean)) {
+        await supabase.from('supplement_logs').upsert({ ...yd, saved: true }, { onConflict: 'log_date' })
+      }
+    }
   }
 
   async function fetchMealOverrides() {
@@ -75,25 +87,38 @@ export default function Diet() {
   async function fetchTodayMealLog() {
     const { data } = await supabase.from('meal_logs').select('*').eq('log_date', todayStr).single()
     if (data) {
-      const ticks = {}
-      ;(data.meals_eaten || []).forEach(id => { ticks[id] = true })
-      setMealTicks(ticks)
-      setEatOuts(data.eat_out || [])
+      // Only restore ticks if today hasn't been saved yet (saved = locked into history)
+      if (!data.saved) {
+        const ticks = {}
+        ;(data.meals_eaten || []).forEach(id => { ticks[id] = true })
+        setMealTicks(ticks)
+        setEatOuts(data.eat_out || [])
+      }
+    } else {
+      // No row for today — auto-save yesterday's unsaved data if any was ticked
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yStr = yesterday.toISOString().split('T')[0]
+      const { data: yd } = await supabase.from('meal_logs').select('*').eq('log_date', yStr).single()
+      if (yd && !yd.saved && (yd.meals_eaten?.length > 0 || yd.eat_out?.length > 0)) {
+        await supabase.from('meal_logs').upsert({ ...yd, saved: true }, { onConflict: 'log_date' })
+      }
     }
   }
 
   async function fetchMealHistory() {
+    // Include today if it was saved — no date filter needed
     const { data } = await supabase.from('meal_logs').select('*')
       .eq('saved', true)
-      .neq('log_date', todayStr)
       .order('log_date', { ascending: false })
       .limit(30)
     if (data) setMealHistory(data)
   }
 
   async function fetchSuppHistory() {
+    // Only show days explicitly saved; include today if saved
     const { data } = await supabase.from('supplement_logs').select('*')
-      .neq('log_date', todayStr)
+      .eq('saved', true)
       .order('log_date', { ascending: false })
       .limit(30)
     if (data) setSuppHistory(data)
@@ -137,6 +162,9 @@ export default function Diet() {
       { onConflict: 'log_date' }
     )
     if (error) { alert('Save failed: ' + error.message); setMealDaySaved(null); return }
+    // Reset today's active state — day is locked
+    setMealTicks({})
+    setEatOuts([])
     await fetchMealHistory()
     setMealDaySaved('done')
     setTimeout(() => setMealDaySaved(null), 2500)
@@ -163,16 +191,19 @@ export default function Diet() {
   async function toggleSupplement(id) {
     const updated = { ...supplementLog, [id]: !supplementLog[id] }
     setSupplementLog(updated)
-    await supabase.from('supplement_logs').upsert({ log_date: todayStr, supplements: updated }, { onConflict: 'log_date' })
+    // saved: false marks this as in-progress (not yet locked into history)
+    await supabase.from('supplement_logs').upsert({ log_date: todayStr, supplements: updated, saved: false }, { onConflict: 'log_date' })
   }
 
   async function saveSuppDay() {
     setSuppDaySaved('saving')
     const { error } = await supabase.from('supplement_logs').upsert(
-      { log_date: todayStr, supplements: supplementLog },
+      { log_date: todayStr, supplements: supplementLog, saved: true },
       { onConflict: 'log_date' }
     )
     if (error) { alert('Save failed: ' + error.message); setSuppDaySaved(null); return }
+    // Reset today's active state — day is locked
+    setSupplementLog({})
     await fetchSuppHistory()
     setSuppDaySaved('done')
     setTimeout(() => setSuppDaySaved(null), 2500)
