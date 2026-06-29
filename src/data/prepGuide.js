@@ -22,8 +22,9 @@ export const SHOPPING_LIST = [
     category: '🌾 Pantry',
     items: [
       { name: 'Jasmine Rice', qty: '2kg bag', note: '~$5-8 · lasts ~2 weeks', store: 'both' },
-      { name: 'Uncle Tobys Quick Oats Sachets', qty: '8-pack box', note: '~$4-5 · or swap for Weetbix 375g · pre-workout base', store: 'both' },
-      { name: 'Peanut Butter (natural)', qty: '375g jar', note: '~$5-6 · Mayver\'s or Fix & Fogg · lasts ~3 weeks', store: 'both' },
+      { name: 'Uncle Tobys Quick Oats Sachets (or Weetbix)', qty: '8-pack box / 750g Weetbix', note: '~$4-5 each · pre-workout base', store: 'both' },
+      { name: 'Milk Powder', qty: 'Small tin', note: '~$5-8 · for morning coffee', store: 'both' },
+      { name: 'Sugar', qty: '1kg bag', note: '~$2 · 2 tsp per day · lasts weeks', store: 'both' },
       { name: 'Canola Oil', qty: '1L bottle', note: '~$4-5 · lasts months', store: 'both' },
     ],
   },
@@ -84,8 +85,8 @@ export const COOK_GUIDES = [
     stores: 0,
     seasonings: [],
     steps: [
-      'Option A — Uncle Tobys Quick Oats: Empty 1 sachet into a bowl, add 250ml Zymil milk, microwave 90 seconds, stir',
-      'Option B — Weetbix: Place 2 biscuits in a bowl, pour 250ml Zymil milk over them, let sit 1-2 mins to soften',
+      'Option A — Uncle Tobys Quick Oats: Empty 1 sachet into a bowl, add 200ml Zymil milk, microwave 90 seconds, stir',
+      'Option B — Weetbix: Place 2 biscuits in a bowl, pour 200ml Zymil milk over them, let sit 1-2 mins to soften',
       'Mix in 1 scoop (30g) protein powder — stir well so it doesn\'t clump',
       'Add 100g frozen blueberries on top — they thaw in a couple of minutes from the warm bowl',
       'Eat at 9pm — 1 hour before your 10pm session',
@@ -101,7 +102,7 @@ export const COOK_GUIDES = [
     stores: 0,
     seasonings: ['Salt', 'Black pepper'],
     steps: [
-      'Pour 150g (Meal 1) or 100g (Meal 2) frozen veggies straight from the bag into a microwave-safe bowl',
+      'Pour 150g (Lunch) or 100g (Dinner) frozen veggies straight from the bag into a microwave-safe bowl',
       'Microwave on high 3-4 mins — no water needed',
       'Season with salt and pepper — that\'s it',
       'No oil needed here — you\'re already getting fat from the canola oil in the chicken',

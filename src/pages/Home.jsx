@@ -138,10 +138,12 @@ function MacroBar({ label, value, unit, color, max }) {
 function NextMealCard({ onClick }) {
   const now = new Date()
   const hour = now.getHours()
+  // Morning Coffee → Lunch (12pm) → Dinner (6:30pm) → Pre-Workout (9pm) → Post-Workout (11pm)
   let next = MEAL_PLAN[0]
-  if (hour >= 12 && hour < 15) next = MEAL_PLAN[1]
-  else if (hour >= 15 && hour < 19) next = MEAL_PLAN[2]
-  else if (hour >= 19) next = MEAL_PLAN[3]
+  if (hour >= 12 && hour < 18) next = MEAL_PLAN[1]
+  else if (hour >= 18 && hour < 21) next = MEAL_PLAN[2]
+  else if (hour >= 21 && hour < 23) next = MEAL_PLAN[3]
+  else if (hour >= 23) next = MEAL_PLAN[4]
 
   return (
     <button onClick={onClick} className="w-full bg-[#1e1e2a] rounded-2xl p-4 text-left border border-white/5 active:scale-95 transition-transform">
