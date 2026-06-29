@@ -28,8 +28,8 @@ export const MEAL_PLAN = [
     time: '12:00 PM',
     emoji: '🍚',
     foods: [
-      { name: 'Chicken breast mince (raw)', amount: '170g' },
-      { name: 'Jasmine rice (dry)', amount: '100g' },
+      { name: 'Chicken breast mince (cooked)', amount: '135g' },
+      { name: 'Jasmine rice (cooked)', amount: '280g' },
       { name: 'Mixed veggies (frozen)', amount: '150g' },
       { name: 'Canola oil', amount: '10ml' },
     ],
@@ -44,8 +44,8 @@ export const MEAL_PLAN = [
     time: '6:30 PM',
     emoji: '🍗',
     foods: [
-      { name: 'Chicken breast mince (raw)', amount: '170g' },
-      { name: 'Jasmine rice (dry)', amount: '100g' },
+      { name: 'Chicken breast mince (cooked)', amount: '135g' },
+      { name: 'Jasmine rice (cooked)', amount: '280g' },
       { name: 'Mixed veggies (frozen)', amount: '100g' },
       { name: 'Canola oil', amount: '10ml' },
     ],

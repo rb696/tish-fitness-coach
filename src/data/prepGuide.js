@@ -54,7 +54,7 @@ export const COOK_GUIDES = [
       'Let cool 10 mins before portioning into 6 containers (~165g each)',
       'Refrigerate up to 4 days — cook again Wednesday to stay fresh',
     ],
-    tip: '💡 Cook Sunday + Wednesday. 2 sessions covers your whole week.',
+    tip: '💡 Cook Sunday + Wednesday. 170g raw = ~135g cooked per serve. Portion into containers by cooked weight.',
   },
   {
     id: 'rice',
@@ -65,16 +65,16 @@ export const COOK_GUIDES = [
     stores: 4,
     seasonings: [],
     steps: [
-      'Weigh 440g jasmine rice dry (220g × 2 meals/day = your daily amount for 4 days — but cook as one big batch)',
+      'Weigh 440g jasmine rice dry and cook as one big batch (100g dry = ~280g cooked per serve)',
       'Rinse under cold water until water runs mostly clear (~30 seconds)',
       'Add to pot with 660ml cold water (1:1.5 ratio)',
       'Bring to boil uncovered, then reduce to lowest heat, cover with lid',
       'Cook 12 mins — do not lift the lid',
       'Remove from heat, leave covered 5 more mins — still don\'t lift the lid',
-      'Fluff with a fork. Divide into 8 containers (~150g cooked each = ~55g dry equivalent)',
+      'Fluff with a fork. Divide into 4 containers of ~280g cooked each — one serve per meal',
       'Refrigerate up to 4 days',
     ],
-    tip: '💡 Always weigh rice DRY before cooking. 120g dry = ~310g cooked. Cooked weights vary too much to track accurately.',
+    tip: '💡 100g dry = ~280g cooked. Weigh dry before cooking, then portion containers by cooked weight (280g each).',
   },
   {
     id: 'oats',
