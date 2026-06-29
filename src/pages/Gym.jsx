@@ -7,7 +7,6 @@ export default function Gym() {
   const [weights, setWeights] = useState({})
   const [logs, setLogs] = useState({})
   const [commentModal, setCommentModal] = useState(null)
-  const [saving, setSaving] = useState(null)
 
   const day = WORKOUT_DAYS.find(d => d.id === selectedDay)
 
@@ -20,7 +19,7 @@ export default function Gym() {
     const { data } = await supabase.from('exercise_weights').select('*')
     if (data) {
       const w = {}
-      data.forEach(r => { w[r.exercise_id] = r.weight_kg })
+      data.forEach(r => { w[r.exercise_id] = r.weights || {} })
       setWeights(w)
     }
   }
@@ -35,14 +34,14 @@ export default function Gym() {
     }
   }
 
-  async function saveWeight(exerciseId, newWeight) {
-    setSaving(exerciseId)
+  async function saveSetWeight(exerciseId, setNumber, weight) {
+    const current = weights[exerciseId] || {}
+    const updated = { ...current, [setNumber]: weight }
     await supabase.from('exercise_weights').upsert(
-      { exercise_id: exerciseId, weight_kg: parseFloat(newWeight) },
+      { exercise_id: exerciseId, weights: updated },
       { onConflict: 'exercise_id' }
     )
-    setWeights(prev => ({ ...prev, [exerciseId]: parseFloat(newWeight) }))
-    setSaving(null)
+    setWeights(prev => ({ ...prev, [exerciseId]: updated }))
   }
 
   async function saveComment(exerciseId, comment) {
@@ -57,14 +56,12 @@ export default function Gym() {
 
   return (
     <div className="pb-28 max-w-lg mx-auto">
-      {/* Header */}
       <div className="px-4 pt-6 mb-4">
         <h1 className="text-2xl font-bold text-white">Gym</h1>
-        <p className="text-gray-400 text-sm mt-1">4-day split · 45 min sessions</p>
+        <p className="text-gray-400 text-sm mt-1">4-day split · 45 min sessions · tap a weight to edit</p>
       </div>
 
-      {/* Day selector */}
-      <div className="px-4 flex gap-2 mb-5 overflow-x-auto pb-1 no-scrollbar">
+      <div className="px-4 flex gap-2 mb-5 overflow-x-auto pb-1">
         {WORKOUT_DAYS.map(d => (
           <button
             key={d.id}
@@ -79,7 +76,6 @@ export default function Gym() {
         ))}
       </div>
 
-      {/* Exercise list */}
       <div className="px-4 space-y-3">
         {day.exercises.map((ex, i) => (
           <ExerciseCard
@@ -87,16 +83,14 @@ export default function Gym() {
             exercise={ex}
             index={i + 1}
             dayColor={day.color}
-            weight={weights[ex.id]}
+            setWeights={weights[ex.id] || {}}
             comment={logs[ex.id]}
-            saving={saving === ex.id}
-            onSaveWeight={w => saveWeight(ex.id, w)}
+            onSaveSetWeight={(setNum, weight) => saveSetWeight(ex.id, setNum, weight)}
             onComment={() => setCommentModal(ex)}
           />
         ))}
       </div>
 
-      {/* Comment modal */}
       {commentModal && (
         <CommentModal
           exercise={commentModal}
@@ -109,41 +103,42 @@ export default function Gym() {
   )
 }
 
-function ExerciseCard({ exercise, index, dayColor, weight, comment, saving, onSaveWeight, onComment }) {
-  const [editingWeight, setEditingWeight] = useState(false)
-  const [weightInput, setWeightInput] = useState(weight ?? '')
+function ExerciseCard({ exercise, index, dayColor, setWeights, comment, onSaveSetWeight, onComment }) {
+  const [editingSet, setEditingSet] = useState(null)
+  const [inputVal, setInputVal] = useState('')
 
-  useEffect(() => {
-    setWeightInput(weight ?? '')
-  }, [weight])
-
-  function handleWeightSave() {
-    if (weightInput !== '' && !isNaN(weightInput)) {
-      onSaveWeight(weightInput)
-    }
-    setEditingWeight(false)
+  function startEdit(setIdx) {
+    setEditingSet(setIdx)
+    setInputVal(setWeights[setIdx + 1] ?? '')
   }
 
+  function commitEdit() {
+    if (inputVal !== '' && !isNaN(inputVal)) {
+      onSaveSetWeight(editingSet + 1, parseFloat(inputVal))
+    }
+    setEditingSet(null)
+  }
+
+  // Check if all sets have weights logged and if any set hit top of rep range
+  const allWeightsLogged = exercise.repScheme.every((_, i) => setWeights[i + 1])
   const topRep = exercise.repScheme[exercise.repScheme.length - 1]
-  const isAtTopOfRange = topRep.includes('-')
-    ? parseInt(topRep.split('-')[1])
-    : parseInt(topRep)
+  const isRangeRep = topRep.includes('-')
+  const topRepNum = isRangeRep ? parseInt(topRep.split('-')[1]) : parseInt(topRep)
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-      <div className="px-4 py-4">
-        {/* Title row */}
-        <div className="flex items-start justify-between gap-2 mb-3">
+      <div className="px-4 pt-4 pb-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-start gap-2 flex-1">
-            <span className="text-xs font-bold mt-0.5 shrink-0 w-5 text-center rounded"
-              style={{ color: dayColor }}>
+            <span className="text-xs font-bold mt-0.5 shrink-0" style={{ color: dayColor }}>
               {index}
             </span>
-            <p className="text-white font-medium text-sm leading-snug">{exercise.name}</p>
+            <p className="text-white font-semibold text-sm leading-snug">{exercise.name}</p>
           </div>
           <button
             onClick={onComment}
-            className="shrink-0 p-1.5 rounded-lg bg-white/5 active:bg-white/10 transition-colors"
+            className="shrink-0 p-1.5 rounded-lg bg-white/5 active:bg-white/10"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
               className={comment ? 'text-indigo-400' : 'text-gray-500'}>
@@ -152,54 +147,62 @@ function ExerciseCard({ exercise, index, dayColor, weight, comment, saving, onSa
           </button>
         </div>
 
-        {/* Sets row */}
-        <div className="flex gap-2 flex-wrap mb-3">
-          {exercise.repScheme.map((reps, i) => (
-            <div key={i} className="px-2.5 py-1 rounded-lg bg-white/5 text-xs text-gray-300">
-              <span className="text-gray-500 mr-1">S{i + 1}</span>{reps}
-            </div>
-          ))}
-        </div>
+        {/* Sets table */}
+        <div className="space-y-2">
+          {exercise.repScheme.map((reps, i) => {
+            const w = setWeights[i + 1]
+            const isEditing = editingSet === i
+            return (
+              <div key={i} className="flex items-center gap-3">
+                {/* Set label */}
+                <span className="text-gray-500 text-xs w-7 shrink-0">S{i + 1}</span>
 
-        {/* Weight row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {editingWeight ? (
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  type="number"
-                  value={weightInput}
-                  onChange={e => setWeightInput(e.target.value)}
-                  onBlur={handleWeightSave}
-                  onKeyDown={e => e.key === 'Enter' && handleWeightSave()}
-                  className="w-20 bg-white/10 rounded-lg px-2 py-1 text-sm text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                  placeholder="kg"
-                />
-                <span className="text-gray-400 text-sm">kg</span>
+                {/* Reps */}
+                <span className="text-gray-300 text-sm w-16 shrink-0">{reps} reps</span>
+
+                {/* Weight input */}
+                <div className="flex-1 flex justify-end">
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        type="number"
+                        inputMode="decimal"
+                        value={inputVal}
+                        onChange={e => setInputVal(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                        className="w-20 bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="0"
+                      />
+                      <span className="text-gray-400 text-xs">kg</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => startEdit(i)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors active:scale-95 ${
+                        w
+                          ? 'bg-white/10 text-white'
+                          : 'bg-white/5 text-gray-500 border border-white/10 border-dashed'
+                      }`}
+                    >
+                      {w ? `${w} kg` : '— kg'}
+                    </button>
+                  )}
+                </div>
               </div>
-            ) : (
-              <button
-                onClick={() => setEditingWeight(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 active:bg-white/10 transition-colors"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                  className="text-gray-400">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                </svg>
-                <span className="text-sm font-medium" style={{ color: weight ? '#fff' : '#6b7280' }}>
-                  {saving ? '...' : weight ? `${weight}kg` : 'Set weight'}
-                </span>
-              </button>
-            )}
-          </div>
-
-          {weight && (
-            <p className="text-xs text-emerald-400 font-medium">
-              Hit {isAtTopOfRange}+ reps → increase weight
-            </p>
-          )}
+            )
+          })}
         </div>
+
+        {/* Progressive overload tip */}
+        {allWeightsLogged && (
+          <div className="mt-3 px-3 py-2 bg-emerald-500/10 rounded-xl">
+            <p className="text-emerald-400 text-xs">
+              ↑ Hit {topRepNum}+ reps on your last set → increase weight next session
+            </p>
+          </div>
+        )}
 
         {/* Note */}
         {exercise.note && (
@@ -219,34 +222,23 @@ function ExerciseCard({ exercise, index, dayColor, weight, comment, saving, onSa
 
 function CommentModal({ exercise, existing, onSave, onClose }) {
   const [text, setText] = useState(existing)
-
   return (
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5">
         <h2 className="text-white font-bold mb-1">{exercise.name}</h2>
-        <p className="text-gray-400 text-sm mb-4">Add a session note</p>
+        <p className="text-gray-400 text-sm mb-4">Session note</p>
         <textarea
           autoFocus
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="e.g. Increased bench, felt strong, shoulder felt fine..."
+          placeholder="e.g. Increased to 80kg, felt strong, shoulder fine..."
           rows={3}
           className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500 resize-none mb-4"
         />
         <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(text)}
-            className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600"
-          >
-            Save
-          </button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm">Cancel</button>
+          <button onClick={() => onSave(text)} className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600">Save</button>
         </div>
       </div>
     </div>
