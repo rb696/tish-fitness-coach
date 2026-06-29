@@ -16,6 +16,16 @@ create table if not exists exercise_weights (
   updated_at timestamptz default now()
 );
 
+-- Exercise weight history — one row per exercise per day for progress tracking
+create table if not exists exercise_weight_history (
+  id uuid default gen_random_uuid() primary key,
+  exercise_id text not null,
+  log_date date not null default current_date,
+  weights jsonb not null default '{}',
+  created_at timestamptz default now(),
+  unique(exercise_id, log_date)
+);
+
 -- Session comments per exercise per day
 create table if not exists exercise_comments (
   id uuid default gen_random_uuid() primary key,
