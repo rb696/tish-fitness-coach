@@ -1,8 +1,8 @@
 export const MACRO_TARGETS = {
-  calories: 2500,
-  protein: 170,
-  carbs: 299,
-  fat: 69,
+  calories: 2300,
+  protein: 155,
+  carbs: 265,
+  fat: 60,
 }
 
 export const MEAL_PLAN = [
@@ -13,14 +13,14 @@ export const MEAL_PLAN = [
     emoji: '🍚',
     foods: [
       { name: 'Chicken breast mince (raw)', amount: '150g' },
-      { name: 'Jasmine rice (dry)', amount: '120g' },
+      { name: 'Jasmine rice (dry)', amount: '100g' },
       { name: 'Mixed veggies (frozen)', amount: '150g' },
       { name: 'Canola oil', amount: '10ml' },
     ],
     protein: 47,
-    carbs: 110,
+    carbs: 93,
     fat: 17,
-    calories: 800,
+    calories: 730,
   },
   {
     id: 2,
@@ -29,14 +29,14 @@ export const MEAL_PLAN = [
     emoji: '🍗',
     foods: [
       { name: 'Chicken breast mince (raw)', amount: '180g' },
-      { name: 'Jasmine rice (dry)', amount: '100g' },
+      { name: 'Jasmine rice (dry)', amount: '80g' },
       { name: 'Mixed veggies (frozen)', amount: '100g' },
       { name: 'Canola oil', amount: '10ml' },
     ],
     protein: 41,
-    carbs: 89,
+    carbs: 71,
     fat: 24,
-    calories: 740,
+    calories: 660,
   },
   {
     id: 3,
@@ -47,12 +47,12 @@ export const MEAL_PLAN = [
       { name: 'Oats (dry)', amount: '80g' },
       { name: 'Zymil low fat milk', amount: '300ml' },
       { name: 'Frozen blueberries', amount: '100g' },
-      { name: 'Peanut butter', amount: '25g' },
+      { name: 'Peanut butter', amount: '20g' },
     ],
-    protein: 28,
-    carbs: 86,
-    fat: 23,
-    calories: 660,
+    protein: 27,
+    carbs: 85,
+    fat: 20,
+    calories: 620,
   },
   {
     id: 4,

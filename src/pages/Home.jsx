@@ -47,7 +47,7 @@ export default function Home() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <StatCard label="Current Weight" value={`${latestWeight}kg`} sub="target: recomp" color="indigo" />
-        <StatCard label="Daily Calories" value="2,500" sub="target" color="emerald" />
+        <StatCard label="Daily Calories" value={MACRO_TARGETS.calories.toLocaleString()} sub="target" color="emerald" />
         <StatCard label="Supplements" value={`${supplementsDone}/6`} sub="today" color="amber" />
       </div>
 

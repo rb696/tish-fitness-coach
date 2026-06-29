@@ -23,7 +23,7 @@ export const SHOPPING_LIST = [
     items: [
       { name: 'Jasmine Rice', qty: '2kg bag', note: '~$5-8 · lasts ~2 weeks', store: 'both' },
       { name: 'Rolled Oats', qty: '1kg bag', note: '~$3.50 · Uncle Tobys or Coles brand', store: 'both' },
-      { name: 'Peanut Butter (natural)', qty: '375g jar', note: '~$5-6 · Mayver\'s or Fix & Fogg · lasts ~2 weeks', store: 'both' },
+      { name: 'Peanut Butter (natural)', qty: '375g jar', note: '~$5-6 · Mayver\'s or Fix & Fogg · lasts ~3 weeks', store: 'both' },
       { name: 'Canola Oil', qty: '1L bottle', note: '~$4-5 · lasts months', store: 'both' },
     ],
   },
