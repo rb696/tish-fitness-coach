@@ -1,8 +1,8 @@
 export const MACRO_TARGETS = {
-  calories: 2300,
+  calories: 2070,
   protein: 155,
-  carbs: 265,
-  fat: 60,
+  carbs: 246,
+  fat: 50,
 }
 
 export const MEAL_PLAN = [
@@ -29,30 +29,30 @@ export const MEAL_PLAN = [
     emoji: '🍗',
     foods: [
       { name: 'Chicken breast mince (raw)', amount: '180g' },
-      { name: 'Jasmine rice (dry)', amount: '80g' },
+      { name: 'Jasmine rice (dry)', amount: '100g' },
       { name: 'Mixed veggies (frozen)', amount: '100g' },
       { name: 'Canola oil', amount: '10ml' },
     ],
     protein: 41,
-    carbs: 71,
+    carbs: 89,
     fat: 24,
-    calories: 660,
+    calories: 740,
   },
   {
     id: 3,
     name: 'Pre-Workout',
-    time: '7:00 PM',
+    time: '9:00 PM',
     emoji: '💪',
     foods: [
-      { name: 'Oats (dry)', amount: '80g' },
-      { name: 'Zymil low fat milk', amount: '300ml' },
+      { name: 'Uncle Tobys Quick Oats sachet (or 2 Weetbix)', amount: '1 sachet / 2 biscuits' },
+      { name: 'Zymil low fat milk', amount: '250ml' },
+      { name: 'Protein powder', amount: '1 scoop (30g)' },
       { name: 'Frozen blueberries', amount: '100g' },
-      { name: 'Peanut butter', amount: '20g' },
     ],
-    protein: 27,
-    carbs: 85,
-    fat: 20,
-    calories: 620,
+    protein: 36,
+    carbs: 52,
+    fat: 6,
+    calories: 395,
   },
   {
     id: 4,
@@ -60,13 +60,13 @@ export const MEAL_PLAN = [
     time: '11:00 PM',
     emoji: '🥤',
     foods: [
-      { name: 'Protein powder', amount: '2 scoops (60g)' },
+      { name: 'Protein powder', amount: '1 scoop (30g)' },
       { name: 'Zymil low fat milk', amount: '250ml' },
     ],
-    protein: 55,
-    carbs: 14,
-    fat: 5,
-    calories: 315,
+    protein: 31,
+    carbs: 12,
+    fat: 3,
+    calories: 205,
   },
 ]
 
