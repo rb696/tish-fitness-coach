@@ -23,6 +23,7 @@ export default function Gym() {
     fetchWeights()
     fetchTodayLogs()
     fetchRatingsAndHistory()
+    cleanupOrphanedData()
   }, [])
 
   useEffect(() => {
@@ -80,6 +81,40 @@ export default function Gym() {
     }
   }
 
+  // Runs once on mount. Deletes exercise_weight_history rows for dates that have
+  // no corresponding workout_session (e.g. from sessions deleted before this fix),
+  // then resets exercise_weights to {} for any exercise whose history was fully wiped.
+  async function cleanupOrphanedData() {
+    const [{ data: sessions }, { data: history }] = await Promise.all([
+      supabase.from('workout_sessions').select('saved_at'),
+      supabase.from('exercise_weight_history').select('id, exercise_id, log_date'),
+    ])
+    if (!history || history.length === 0) return
+
+    // For weight history: a date is valid only if a session was actually saved on that date.
+    // Today is NOT auto-exempted here — if no session was saved today, today's history is
+    // also orphaned (e.g. from a test session that was deleted).
+    const sessionDates = new Set((sessions || []).map(s => s.saved_at.split('T')[0]))
+    const orphaned = history.filter(h => !sessionDates.has(h.log_date))
+    if (orphaned.length === 0) return
+
+    await supabase.from('exercise_weight_history').delete().in('id', orphaned.map(h => h.id))
+
+    // Exercises whose history was entirely wiped need their current weights reset to {}
+    const stillValid = new Set(history.filter(h => sessionDates.has(h.log_date)).map(h => h.exercise_id))
+    const toReset = [...new Set(orphaned.map(h => h.exercise_id))].filter(id => !stillValid.has(id))
+
+    if (toReset.length > 0) {
+      await Promise.all(toReset.map(exId =>
+        supabase.from('exercise_weights').upsert(
+          { exercise_id: exId, weights: {} },
+          { onConflict: 'exercise_id' }
+        )
+      ))
+      await fetchWeights()
+    }
+  }
+
   async function saveRating(exerciseId, setNum, rating) {
     const todayStr = new Date().toISOString().split('T')[0]
     const current = ratings[exerciseId]?.[setNum]
@@ -126,6 +161,10 @@ export default function Gym() {
   }
 
   async function saveSetWeight(exerciseId, setNumber, weight) {
+    if (weight > 500) {
+      alert('Weight looks too high — max 500 kg per set. Please check the value.')
+      return
+    }
     const current = weights[exerciseId] || {}
     const updated = { ...current, [setNumber]: weight }
 
@@ -247,17 +286,37 @@ export default function Gym() {
       return
     }
 
-    // Remove set_ratings orphaned by this deletion.
-    // saved_at is a timestamp — extract the date portion to match log_date.
     const sessionDate = session.saved_at.split('T')[0]
     const exerciseIds = (session.exercises || []).map(ex => ex.id)
+
     if (exerciseIds.length > 0) {
-      const { error: rErr } = await supabase
-        .from('set_ratings')
-        .delete()
-        .eq('log_date', sessionDate)
-        .in('exercise_id', exerciseIds)
-      if (rErr) console.error('deleteSession ratings cleanup failed:', rErr.message)
+      // Delete orphaned ratings and weight history for this session's date
+      await Promise.all([
+        supabase.from('set_ratings').delete()
+          .eq('log_date', sessionDate).in('exercise_id', exerciseIds),
+        supabase.from('exercise_weight_history').delete()
+          .eq('log_date', sessionDate).in('exercise_id', exerciseIds),
+      ])
+
+      // For each exercise, restore exercise_weights from the most recent remaining
+      // history entry, or clear to {} if no history is left.
+      const restorations = {}
+      await Promise.all(exerciseIds.map(async exId => {
+        const { data } = await supabase
+          .from('exercise_weight_history')
+          .select('weights')
+          .eq('exercise_id', exId)
+          .order('log_date', { ascending: false })
+          .limit(1)
+        const restored = data?.[0]?.weights ?? {}
+        restorations[exId] = restored
+        await supabase.from('exercise_weights').upsert(
+          { exercise_id: exId, weights: restored },
+          { onConflict: 'exercise_id' }
+        )
+      }))
+
+      setWeights(prev => ({ ...prev, ...restorations }))
     }
 
     setSavedSessions(prev => prev.filter(s => s.id !== session.id))
