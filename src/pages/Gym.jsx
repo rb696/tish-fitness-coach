@@ -568,10 +568,19 @@ function SessionsView({ sessions, loading, onDelete }) {
   )
 }
 
+const RATING_BADGE = {
+  easy: { label: 'E', cls: 'bg-emerald-500/20 text-emerald-400' },
+  good: { label: '✓', cls: 'bg-indigo-500/20 text-indigo-400' },
+  hard: { label: 'H', cls: 'bg-red-500/20 text-red-400' },
+}
+
 function SessionCard({ session, onDelete }) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [repData, setRepData] = useState({})     // { [exId]: { [setNum]: number } }
+  const [ratingData, setRatingData] = useState({}) // { [exId]: { [setNum]: string } }
+  const [detailLoaded, setDetailLoaded] = useState(false)
 
   const day = WORKOUT_DAYS.find(d => d.id === session.day_type)
   const color = day?.color ?? '#6366f1'
@@ -580,6 +589,32 @@ function SessionCard({ session, onDelete }) {
   const dateStr = savedAt.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
   const timeStr = savedAt.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
   const totalSets = session.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)
+  const sessionDate = session.saved_at.split('T')[0]
+  const exerciseIds = (session.exercises || []).map(ex => ex.id)
+
+  useEffect(() => {
+    if (!open || detailLoaded || exerciseIds.length === 0) return
+    async function loadDetail() {
+      const [{ data: reps }, { data: ratings }] = await Promise.all([
+        supabase.from('set_reps').select('*').eq('log_date', sessionDate).in('exercise_id', exerciseIds),
+        supabase.from('set_ratings').select('*').eq('log_date', sessionDate).in('exercise_id', exerciseIds),
+      ])
+      const rd = {}
+      ;(reps || []).forEach(r => {
+        if (!rd[r.exercise_id]) rd[r.exercise_id] = {}
+        if (r.reps != null) rd[r.exercise_id][r.set_number] = r.reps
+      })
+      const rt = {}
+      ;(ratings || []).forEach(r => {
+        if (!rt[r.exercise_id]) rt[r.exercise_id] = {}
+        rt[r.exercise_id][r.set_number] = r.rating
+      })
+      setRepData(rd)
+      setRatingData(rt)
+      setDetailLoaded(true)
+    }
+    loadDetail()
+  }, [open])
 
   async function handleDelete() {
     setDeleting(true)
@@ -633,20 +668,40 @@ function SessionCard({ session, onDelete }) {
       )}
 
       {open && (
-        <div className="px-4 pb-4 space-y-4 border-t border-white/5 pt-3">
-          {session.exercises.map(ex => (
-            <div key={ex.id}>
-              <p className="text-white text-sm font-medium mb-2">{ex.name}</p>
-              <div className="flex flex-wrap gap-2">
-                {ex.sets.map(s => (
-                  <div key={s.set} className="bg-white/5 rounded-xl px-3 py-2 text-center min-w-[56px]">
-                    <p className="text-gray-500 text-[10px] mb-0.5">S{s.set} · {s.reps}r</p>
-                    <p className="text-white text-sm font-semibold">{s.weight}kg</p>
-                  </div>
-                ))}
+        <div className="px-4 pb-4 space-y-5 border-t border-white/5 pt-3">
+          {!detailLoaded ? (
+            <p className="text-gray-500 text-xs py-2">Loading...</p>
+          ) : (
+            session.exercises.map(ex => (
+              <div key={ex.id}>
+                <p className="text-white text-sm font-medium mb-2">{ex.name}</p>
+                <div className="space-y-1.5">
+                  {ex.sets.map(s => {
+                    const actualReps = repData[ex.id]?.[s.set]
+                    const rating = ratingData[ex.id]?.[s.set]
+                    const badge = RATING_BADGE[rating]
+                    return (
+                      <div key={s.set} className="flex items-center gap-3">
+                        <span className="text-gray-600 text-xs w-6 shrink-0">S{s.set}</span>
+                        <span className="text-white text-sm font-medium flex-1">
+                          {s.weight}kg
+                          <span className="text-gray-400 font-normal">
+                            {' × '}
+                            {actualReps != null ? `${actualReps} reps` : s.reps}
+                          </span>
+                        </span>
+                        {badge && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>
