@@ -31,17 +31,25 @@ export default function Home() {
     const todayStr = new Date().toISOString().split('T')[0]
     const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    const [{ data: wl }, { data: sl }, { data: allRatings }, { data: histData }] = await Promise.all([
+    const [{ data: wl }, { data: sl }, { data: allRatings }, { data: histData }, { data: sessions }] = await Promise.all([
       supabase.from('weight_logs').select('*').order('logged_date', { ascending: false }).limit(5),
       supabase.from('supplement_logs').select('*').eq('log_date', todayStr).single(),
       supabase.from('set_ratings').select('*').gte('log_date', thirtyAgo),
       supabase.from('exercise_weight_history').select('*').order('log_date', { ascending: false }).limit(100),
+      supabase.from('workout_sessions').select('saved_at').gte('saved_at', thirtyAgo + 'T00:00:00'),
     ])
 
     if (wl) setWeightLogs(wl)
     if (sl) setSupplementLog(sl.supplements || {})
     if (allRatings && histData) {
-      const prog = computeProgression(allRatings, histData)
+      // Only trust ratings whose date has a saved session (or is today for in-progress sets).
+      // This filters out orphaned rows left behind by deleted sessions.
+      const validDates = new Set([
+        todayStr,
+        ...(sessions || []).map(s => s.saved_at.split('T')[0]),
+      ])
+      const liveRatings = allRatings.filter(r => validDates.has(r.log_date))
+      const prog = computeProgression(liveRatings, histData)
       setProgressionData(Object.values(prog))
     }
   }

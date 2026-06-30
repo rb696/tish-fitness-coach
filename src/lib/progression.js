@@ -70,6 +70,7 @@ export function computeProgression(recentRatings = [], weightHistory = []) {
     const inc = getIncrease(exId)
 
     result[exId] = {
+      exerciseId: exId,
       ...meta,
       status,
       reason,

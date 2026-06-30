@@ -53,10 +53,11 @@ export default function Gym() {
     const todayStr = new Date().toISOString().split('T')[0]
     const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    const [{ data: todayRatings }, { data: histData }, { data: allRatings }] = await Promise.all([
+    const [{ data: todayRatings }, { data: histData }, { data: allRatings }, { data: sessions }] = await Promise.all([
       supabase.from('set_ratings').select('*').eq('log_date', todayStr),
       supabase.from('exercise_weight_history').select('*').order('log_date', { ascending: false }).limit(100),
       supabase.from('set_ratings').select('*').gte('log_date', thirtyAgo),
+      supabase.from('workout_sessions').select('saved_at').gte('saved_at', thirtyAgo + 'T00:00:00'),
     ])
 
     if (todayRatings) {
@@ -69,7 +70,13 @@ export default function Gym() {
     }
 
     if (allRatings && histData) {
-      setProgressionHints(computeProgression(allRatings, histData))
+      // Only count ratings for dates that have a saved session (plus today for in-progress sets).
+      const validDates = new Set([
+        todayStr,
+        ...(sessions || []).map(s => s.saved_at.split('T')[0]),
+      ])
+      const liveRatings = allRatings.filter(r => validDates.has(r.log_date))
+      setProgressionHints(computeProgression(liveRatings, histData))
     }
   }
 
@@ -232,14 +239,28 @@ export default function Gym() {
     setTimeout(() => setWorkoutSaved(null), 2500)
   }
 
-  async function deleteSession(id) {
-    const { error } = await supabase.from('workout_sessions').delete().eq('id', id)
+  async function deleteSession(session) {
+    const { error } = await supabase.from('workout_sessions').delete().eq('id', session.id)
     if (error) {
       console.error('deleteSession failed:', error.message)
       alert(`Delete failed: ${error.message}`)
       return
     }
-    setSavedSessions(prev => prev.filter(s => s.id !== id))
+
+    // Remove set_ratings orphaned by this deletion.
+    // saved_at is a timestamp — extract the date portion to match log_date.
+    const sessionDate = session.saved_at.split('T')[0]
+    const exerciseIds = (session.exercises || []).map(ex => ex.id)
+    if (exerciseIds.length > 0) {
+      const { error: rErr } = await supabase
+        .from('set_ratings')
+        .delete()
+        .eq('log_date', sessionDate)
+        .in('exercise_id', exerciseIds)
+      if (rErr) console.error('deleteSession ratings cleanup failed:', rErr.message)
+    }
+
+    setSavedSessions(prev => prev.filter(s => s.id !== session.id))
   }
 
   const tabs = [
@@ -414,7 +435,7 @@ function SessionCard({ session, onDelete }) {
 
   async function handleDelete() {
     setDeleting(true)
-    await onDelete(session.id)
+    await onDelete(session)
   }
 
   return (
