@@ -466,6 +466,7 @@ export default function Diet() {
           log={editingMealHistory}
           meals={meals}
           onSave={(ticks, eos) => updateMealHistory(editingMealHistory.log_date, ticks, eos)}
+          onDelete={async () => { await deleteMealHistory(editingMealHistory.log_date); setEditingMealHistory(null) }}
           onClose={() => setEditingMealHistory(null)}
         />
       )}
@@ -481,6 +482,7 @@ export default function Diet() {
         <SuppHistoryEditModal
           log={editingSuppHistory}
           onSave={(supps) => updateSuppHistory(editingSuppHistory.log_date, supps)}
+          onDelete={async () => { await deleteSuppHistory(editingSuppHistory.log_date); setEditingSuppHistory(null) }}
           onClose={() => setEditingSuppHistory(null)}
         />
       )}
@@ -735,20 +737,25 @@ function MealHistoryCard({ log, onEdit, onDelete }) {
 
 // ── Meal history edit modal ─────────────────────────────
 
-function MealHistoryEditModal({ log, meals, onSave, onClose }) {
+function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
+  // Use String() keys explicitly to avoid any number/string coercion mismatch
   const [ticks, setTicks] = useState(() => {
     const t = {}
-    ;(log.meals_eaten || []).forEach(id => { t[id] = true })
+    ;(log.meals_eaten || []).forEach(id => { t[String(id)] = true })
     return t
   })
   const [localEatOuts, setLocalEatOuts] = useState(log.eat_out || [])
   const [showEatOutForm, setShowEatOutForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
+  // Recompute live on every render — updates when ticks or eatOuts change
   const consumed = computeConsumed(meals, ticks, localEatOuts)
 
   function toggleTick(mealId) {
-    setTicks(prev => ({ ...prev, [mealId]: !prev[mealId] }))
+    const key = String(mealId)
+    setTicks(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
   function addEatOut(entry) {
@@ -766,17 +773,54 @@ function MealHistoryEditModal({ log, meals, onSave, onClose }) {
     setSaving(false)
   }
 
+  async function handleDelete() {
+    setDeleting(true)
+    await onDelete()
+    setDeleting(false)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-[60] flex items-end">
+      {/* Backdrop — sits behind the panel (z-0) so it never intercepts panel clicks */}
+      <div className="absolute inset-0 bg-black/70 z-0" onClick={onClose} />
+
+      {/* Panel — explicit z-10 ensures it is always above the backdrop */}
+      <div className="relative z-10 w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl max-h-[92vh] flex flex-col">
+
+        {/* Inline delete-confirm overlay — covers just the panel */}
+        {confirmDelete && (
+          <div className="absolute inset-0 z-20 bg-[#1a1a24]/95 rounded-t-3xl flex flex-col justify-end p-6">
+            <p className="text-white font-bold text-lg mb-1">Delete this day?</p>
+            <p className="text-gray-400 text-sm mb-6">
+              Permanently removes the meal log for {fmtDate(log.log_date)}.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5 shrink-0">
           <div>
             <h2 className="text-white font-bold text-lg">Edit day</h2>
             <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 active:text-white">
+          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1">
             <CloseIcon />
           </button>
         </div>
@@ -800,16 +844,17 @@ function MealHistoryEditModal({ log, meals, onSave, onClose }) {
           <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
             {meals.map((meal, i) => (
               <button
+                type="button"
                 key={meal.id}
                 onClick={() => toggleTick(meal.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-white/5 ${
                   i < meals.length - 1 ? 'border-b border-white/5' : ''
                 }`}
               >
-                <CheckCircle checked={!!ticks[meal.id]} />
+                <CheckCircle checked={!!ticks[String(meal.id)]} />
                 <span className="text-xl shrink-0">{meal.emoji}</span>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${ticks[meal.id] ? 'text-white' : 'text-gray-400'}`}>{meal.name}</p>
+                  <p className={`text-sm font-medium ${ticks[String(meal.id)] ? 'text-white' : 'text-gray-400'}`}>{meal.name}</p>
                   <p className="text-gray-500 text-xs">{meal.time} · {meal.calories} kcal</p>
                 </div>
               </button>
@@ -830,6 +875,7 @@ function MealHistoryEditModal({ log, meals, onSave, onClose }) {
             <InlineEatOutForm onAdd={addEatOut} onCancel={() => setShowEatOutForm(false)} />
           ) : (
             <button
+              type="button"
               onClick={() => setShowEatOutForm(true)}
               className="w-full py-3 rounded-2xl bg-white/5 text-amber-400 text-sm font-medium active:bg-white/10 border border-amber-500/20"
             >
@@ -839,13 +885,21 @@ function MealHistoryEditModal({ log, meals, onSave, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 pb-6 pt-3 border-t border-white/5 shrink-0">
+        <div className="px-5 pb-6 pt-3 border-t border-white/5 shrink-0 space-y-2">
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
             className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20"
+          >
+            Delete this day
           </button>
         </div>
       </div>
@@ -974,9 +1028,11 @@ function SuppHistoryCard({ log, onEdit, onDelete }) {
 
 // ── Supplement history edit modal ───────────────────────
 
-function SuppHistoryEditModal({ log, onSave, onClose }) {
+function SuppHistoryEditModal({ log, onSave, onDelete, onClose }) {
   const [supps, setSupps] = useState({ ...(log.supplements || {}) })
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const takenCount = SUPPLEMENTS.filter(s => supps[s.id]).length
 
   async function handleSave() {
@@ -985,16 +1041,53 @@ function SuppHistoryEditModal({ log, onSave, onClose }) {
     setSaving(false)
   }
 
+  async function handleDelete() {
+    setDeleting(true)
+    await onDelete()
+    setDeleting(false)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl p-5">
+    <div className="fixed inset-0 z-[60] flex items-end">
+      {/* Backdrop behind panel */}
+      <div className="absolute inset-0 bg-black/70 z-0" onClick={onClose} />
+
+      {/* Panel — z-10 keeps it above the backdrop */}
+      <div className="relative z-10 w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl p-5">
+
+        {/* Inline delete-confirm overlay */}
+        {confirmDelete && (
+          <div className="absolute inset-0 z-20 bg-[#1a1a24]/95 rounded-t-3xl flex flex-col justify-end p-6">
+            <p className="text-white font-bold text-lg mb-1">Delete this day?</p>
+            <p className="text-gray-400 text-sm mb-6">
+              Permanently removes the supplement log for {fmtDate(log.log_date)}.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-white font-bold text-lg">Edit supplements</h2>
             <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 active:text-white">
+          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1">
             <CloseIcon />
           </button>
         </div>
@@ -1002,6 +1095,7 @@ function SuppHistoryEditModal({ log, onSave, onClose }) {
         <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden mb-3">
           {SUPPLEMENTS.map((supp, i) => (
             <button
+              type="button"
               key={supp.id}
               onClick={() => setSupps(prev => ({ ...prev, [supp.id]: !prev[supp.id] }))}
               className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors active:bg-white/5 ${
@@ -1020,15 +1114,25 @@ function SuppHistoryEditModal({ log, onSave, onClose }) {
           ))}
         </div>
 
-        <p className="text-center text-gray-500 text-xs mb-5">{takenCount}/{SUPPLEMENTS.length} taken</p>
+        <p className="text-center text-gray-500 text-xs mb-4">{takenCount}/{SUPPLEMENTS.length} taken</p>
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20"
+          >
+            Delete this day
+          </button>
+        </div>
       </div>
     </div>
   )
