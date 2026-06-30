@@ -602,6 +602,8 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
   }
 
   const allWeightsLogged = exercise.repScheme.every((_, i) => setWeights[i + 1])
+  const warmupCount = exercise.warmupSets || 0
+  const s1Weight = setWeights[1]
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
@@ -629,6 +631,34 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
         </div>
 
         <div className="space-y-2">
+          {/* Warmup sets — auto-calculated, no rating buttons */}
+          {warmupCount > 0 && (
+            <>
+              {Array.from({ length: warmupCount }, (_, wi) => {
+                const pct = wi === 0 ? 0.5 : 0.7
+                const reps = wi === 0 ? '10r' : '6r'
+                const label = wi === 0 ? 'W1' : 'W2'
+                const wWeight = s1Weight ? Math.round(s1Weight * pct) : null
+                return (
+                  <div key={label} className="flex items-center gap-2">
+                    <span className="text-amber-500/50 text-xs w-7 shrink-0">{label}</span>
+                    <span className="text-gray-600 text-xs w-12 shrink-0">{reps}</span>
+                    <div className="flex-1 flex items-center gap-2 justify-end">
+                      <span className={`px-2 py-1.5 rounded-lg text-xs min-w-[58px] text-center ${
+                        wWeight ? 'bg-amber-500/10 text-amber-600/70' : 'bg-white/5 text-gray-600'
+                      }`}>
+                        {wWeight ? `${wWeight}kg` : '—kg'}
+                      </span>
+                      <span className="w-20 text-center text-[9px] text-amber-500/40 font-semibold uppercase tracking-widest">WARMUP</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="border-t border-white/5 my-0.5" />
+            </>
+          )}
+
+          {/* Working sets */}
           {exercise.repScheme.map((reps, i) => {
             const setNum = i + 1
             const w = setWeights[setNum]

@@ -10,6 +10,10 @@ export default function Weight() {
   const [inputDate, setInputDate] = useState(new Date().toISOString().split('T')[0])
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editingLog, setEditingLog] = useState(null)
+  const [editWeight, setEditWeight] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   useEffect(() => {
     fetchLogs()
@@ -34,6 +38,29 @@ export default function Weight() {
     setInputWeight('')
     setShowForm(false)
     setSaving(false)
+  }
+
+  function startEdit(log) {
+    setEditingLog(log)
+    setEditWeight(String(log.weight_kg))
+    setEditDate(log.logged_date)
+    setConfirmDeleteId(null)
+  }
+
+  async function saveEdit() {
+    if (!editWeight || isNaN(editWeight) || !editDate) return
+    await supabase
+      .from('weight_logs')
+      .update({ logged_date: editDate, weight_kg: parseFloat(editWeight) })
+      .eq('id', editingLog.id)
+    setEditingLog(null)
+    await fetchLogs()
+  }
+
+  async function deleteLog(id) {
+    await supabase.from('weight_logs').delete().eq('id', id)
+    setConfirmDeleteId(null)
+    await fetchLogs()
   }
 
   const chartData = logs.map(l => ({
@@ -174,14 +201,111 @@ export default function Weight() {
         <div className="px-4">
           <p className="text-white font-semibold text-sm mb-3">History</p>
           <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-            {[...logs].reverse().slice(0, 12).map((log, i) => (
-              <div key={log.id} className={`flex justify-between items-center px-4 py-3 ${i < Math.min(logs.length, 12) - 1 ? 'border-b border-white/5' : ''}`}>
-                <span className="text-gray-400 text-sm">
-                  {new Date(log.logged_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
-                </span>
-                <span className="text-white font-semibold">{log.weight_kg}kg</span>
-              </div>
-            ))}
+            {[...logs].reverse().slice(0, 20).map((log, i, arr) => {
+              const isEditing = editingLog?.id === log.id
+              const isConfirmingDelete = confirmDeleteId === log.id
+              const isLast = i === arr.length - 1
+
+              if (isEditing) {
+                return (
+                  <div key={log.id} className={`px-4 py-3 bg-indigo-500/5 ${!isLast ? 'border-b border-white/5' : ''}`}>
+                    <div className="flex gap-2 mb-3">
+                      <div className="flex-1">
+                        <label className="text-gray-500 text-[10px] mb-1 block">Weight (kg)</label>
+                        <input
+                          autoFocus
+                          type="number"
+                          step="0.1"
+                          value={editWeight}
+                          onChange={e => setEditWeight(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && saveEdit()}
+                          className="w-full bg-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-gray-500 text-[10px] mb-1 block">Date</label>
+                        <input
+                          type="date"
+                          value={editDate}
+                          onChange={e => setEditDate(e.target.value)}
+                          className="w-full bg-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingLog(null)}
+                        className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium active:bg-white/10"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveEdit}
+                        className="flex-1 py-2 rounded-xl bg-indigo-500 text-white text-sm font-medium active:bg-indigo-600"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (isConfirmingDelete) {
+                return (
+                  <div key={log.id} className={`px-4 py-3 flex items-center gap-3 bg-red-500/5 ${!isLast ? 'border-b border-white/5' : ''}`}>
+                    <p className="text-gray-300 text-sm flex-1">Delete this entry?</p>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-sm active:bg-white/10"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteLog(log.id)}
+                      className="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-sm font-medium active:bg-red-500/25"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )
+              }
+
+              return (
+                <div key={log.id} className={`flex items-center px-4 py-3 ${!isLast ? 'border-b border-white/5' : ''}`}>
+                  <span className="text-gray-400 text-sm flex-1">
+                    {new Date(log.logged_date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
+                  <span className="text-white font-semibold mr-3">{log.weight_kg}kg</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(log)}
+                      className="p-1.5 rounded-lg bg-white/5 active:bg-white/10"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-gray-500">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmDeleteId(log.id); setEditingLog(null) }}
+                      className="p-1.5 rounded-lg bg-white/5 active:bg-white/10"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-gray-500">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 11v6M14 11v6" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
