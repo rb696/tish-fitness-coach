@@ -14,7 +14,7 @@ export default function Gym() {
   const [savedSessions, setSavedSessions] = useState([])
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [ratings, setRatings] = useState({})
-  const [repLogs, setRepLogs] = useState({})       // { [exId]: { [setNum]: { reps, toFailure } } }
+  const [repLogs, setRepLogs] = useState({})       // { [exId]: { [setNum]: { reps } } }
   const [progressionHints, setProgressionHints] = useState({})
   const [saveToast, setSaveToast] = useState(null)
   const timerRef = useRef(null)
@@ -120,7 +120,7 @@ export default function Gym() {
       const rl = {}
       todayRepsData.forEach(r => {
         if (!rl[r.exercise_id]) rl[r.exercise_id] = {}
-        rl[r.exercise_id][r.set_number] = { reps: r.reps, toFailure: r.to_failure }
+        rl[r.exercise_id][r.set_number] = { reps: r.reps }
       })
       setRepLogs(rl)
     }
@@ -196,10 +196,10 @@ export default function Gym() {
     }))
   }
 
-  async function saveRepLog(exerciseId, setNum, reps, toFailure) {
+  async function saveRepLog(exerciseId, setNum, reps) {
     const todayStr = new Date().toISOString().split('T')[0]
     const { error } = await supabase.from('set_reps').upsert(
-      { exercise_id: exerciseId, log_date: todayStr, set_number: setNum, reps: reps ?? null, to_failure: toFailure ?? false },
+      { exercise_id: exerciseId, log_date: todayStr, set_number: setNum, reps: reps ?? null, to_failure: false },
       { onConflict: 'exercise_id,log_date,set_number' }
     )
     if (error) {
@@ -208,7 +208,7 @@ export default function Gym() {
     }
     setRepLogs(prev => ({
       ...prev,
-      [exerciseId]: { ...(prev[exerciseId] || {}), [setNum]: { reps, toFailure } },
+      [exerciseId]: { ...(prev[exerciseId] || {}), [setNum]: { reps } },
     }))
   }
 
@@ -317,12 +317,12 @@ export default function Gym() {
     const todayRepsFlat = []
     for (const [exId, setMap] of Object.entries(repLogs)) {
       for (const [setNum, data] of Object.entries(setMap)) {
-        if (data.reps != null || data.toFailure) {
+        if (data.reps != null) {
           todayRepsFlat.push({
             exercise_id: exId,
             set_number: parseInt(setNum, 10),
             reps: data.reps,
-            to_failure: data.toFailure,
+            to_failure: false,
           })
         }
       }
@@ -460,7 +460,7 @@ export default function Gym() {
                   saveRating(ex.id, setNum, rating)
                   if (prevRating !== rating) startRestTimer(ex.id, ex.restSeconds ?? 60)
                 }}
-                onSaveRepLog={(setNum, reps, toFailure) => saveRepLog(ex.id, setNum, reps, toFailure)}
+                onSaveRepLog={(setNum, reps) => saveRepLog(ex.id, setNum, reps)}
                 onComment={() => setCommentModal(ex)}
                 onHistory={() => setHistoryModal(ex)}
                 restTimer={restTimer?.exerciseId === ex.id ? restTimer : null}
@@ -703,13 +703,8 @@ function ExerciseCard({
     if (raw === undefined) return
     const val = parseInt(raw, 10)
     if (!isNaN(val) && val > 0) {
-      onSaveRepLog(setNum, val, repLogs[setNum]?.toFailure ?? false)
+      onSaveRepLog(setNum, val)
     }
-  }
-
-  function toggleFailure(setNum) {
-    const current = repLogs[setNum] ?? {}
-    onSaveRepLog(setNum, current.reps ?? null, !(current.toFailure ?? false))
   }
 
   function getRepValue(setNum) {
@@ -788,8 +783,6 @@ function ExerciseCard({
             const w = setWeights[setNum]
             const isEditing = editingWeightKey === setNum
             const currentRating = setRatings[setNum]
-            const repLog = repLogs[setNum]
-            const isFailure = repLog?.toFailure ?? false
 
             return (
               <div key={i}>
@@ -828,31 +821,20 @@ function ExerciseCard({
                   </div>
                 </div>
 
-                {/* Reps + failure sub-row — appears once the set is rated */}
-                {currentRating && (
-                  <div className="ml-7 mt-1 flex items-center gap-2">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={getRepValue(setNum)}
-                      onChange={e => setRepEdits(prev => ({ ...prev, [setNum]: e.target.value }))}
-                      onBlur={() => commitRep(setNum)}
-                      onKeyDown={e => e.key === 'Enter' && e.target.blur()}
-                      placeholder="reps"
-                      className="w-12 bg-white/5 rounded-lg px-1.5 py-1 text-[11px] text-white text-center outline-none focus:ring-1 focus:ring-white/20"
-                    />
-                    <span className="text-gray-600 text-[11px]">reps</span>
-                    <button
-                      type="button"
-                      onClick={() => toggleFailure(setNum)}
-                      className={`text-[10px] px-2 py-1 rounded-lg transition-colors font-medium ${
-                        isFailure ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-gray-600'
-                      }`}
-                    >
-                      {isFailure ? '● fail' : '○ fail'}
-                    </button>
-                  </div>
-                )}
+                {/* Reps input — always visible for every working set */}
+                <div className="ml-7 mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={getRepValue(setNum)}
+                    onChange={e => setRepEdits(prev => ({ ...prev, [setNum]: e.target.value }))}
+                    onBlur={() => commitRep(setNum)}
+                    onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                    placeholder="reps"
+                    className="w-12 bg-white/5 rounded-lg px-1.5 py-1 text-[11px] text-white text-center outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <span className="text-gray-600 text-[11px]">reps</span>
+                </div>
               </div>
             )
           })}

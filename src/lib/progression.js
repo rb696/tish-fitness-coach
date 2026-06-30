@@ -23,18 +23,18 @@ const REP_SCHEMES = (() => {
 })()
 
 // ─────────────────────────────────────────────────────────────────────────────
-// computeProgression
-// Used to show the per-exercise hint banner between sessions.
+// computeProgression — between-session hint banner per exercise
 //
-// Algorithm (recomp → hypertrophy focus):
-//   Priority 1 — Rep data (objective):
-//     • All sets hit top of range, none to failure → increase (room in the tank)
-//     • Any set to failure before top of range → hold (was too heavy)
-//     • Any set to failure at/above top + easy rating → still increase (efficient)
-//   Priority 2 — Ratings (subjective fallback when no reps logged):
-//     • Any H → hold
-//     • ≥2 E → increase
-//     • 2 consecutive all-✓ sessions → increase
+// Decision order:
+//   1. Hard rating → review (hold regardless of reps)
+//   2. Rep data present:
+//      • All sets hit top of range → increase
+//      • Any set below range.lo → hold (genuinely struggling)
+//      • Sets in range but below top → ok (keep building)
+//      • ≥2 easy despite rep data → increase override
+//   3. Ratings-only (no reps logged):
+//      • ≥2 easy → increase
+//      • 2 consecutive all-✓ sessions → increase
 // ─────────────────────────────────────────────────────────────────────────────
 export function computeProgression(recentRatings = [], weightHistory = [], recentReps = []) {
   const exerciseMeta = {}
@@ -44,7 +44,7 @@ export function computeProgression(recentRatings = [], weightHistory = [], recen
     }
   }
 
-  // Group ratings: { [exId]: { [date]: { [setNum]: rating } } }
+  // { [exId]: { [date]: { [setNum]: rating } } }
   const byExRatings = {}
   for (const r of recentRatings) {
     if (!byExRatings[r.exercise_id]) byExRatings[r.exercise_id] = {}
@@ -52,15 +52,15 @@ export function computeProgression(recentRatings = [], weightHistory = [], recen
     byExRatings[r.exercise_id][r.log_date][r.set_number] = r.rating
   }
 
-  // Group reps: { [exId]: { [date]: { [setNum]: { reps, toFailure } } } }
+  // { [exId]: { [date]: { [setNum]: { reps } } } }
   const byExReps = {}
   for (const r of recentReps) {
     if (!byExReps[r.exercise_id]) byExReps[r.exercise_id] = {}
     if (!byExReps[r.exercise_id][r.log_date]) byExReps[r.exercise_id][r.log_date] = {}
-    byExReps[r.exercise_id][r.log_date][r.set_number] = { reps: r.reps, toFailure: r.to_failure }
+    byExReps[r.exercise_id][r.log_date][r.set_number] = { reps: r.reps }
   }
 
-  // Latest weight per exercise
+  // Latest logged weight per exercise (history is ordered desc)
   const latestWeight = {}
   for (const h of weightHistory) {
     if (latestWeight[h.exercise_id] !== undefined) continue
@@ -93,44 +93,40 @@ export function computeProgression(recentRatings = [], weightHistory = [], recen
     const allGoodRatings = Object.values(latestRatings).length > 0 &&
       Object.values(latestRatings).every(r => r === 'good')
 
-    const hasRepData = Object.keys(latestReps).length > 0
+    const hasRepData    = Object.keys(latestReps).length > 0
     const allSetsLogged = scheme.length > 0 && scheme.every((_, i) => latestReps[i + 1]?.reps != null)
-    const allHitTop = allSetsLogged && scheme.every((range, i) => latestReps[i + 1].reps >= range.hi)
-    const anyFailure = Object.values(latestReps).some(r => r.toFailure)
+    const allHitTop     = allSetsLogged && scheme.every((range, i) => latestReps[i + 1].reps >= range.hi)
+    const anyBelowFloor = hasRepData && Object.entries(latestReps).some(([sn, d]) => {
+      const range = scheme[parseInt(sn, 10) - 1]
+      return d.reps != null && range && d.reps < range.lo
+    })
 
     let status = 'ok'
     let reason = ''
 
-    if (hasRepData) {
-      if (hasHardRating) {
-        status = 'review'
-        reason = 'Hard set logged — hold weight and focus on quality'
-      } else if (anyFailure && !allHitTop) {
-        status = 'hold'
-        reason = 'Went to failure before hitting target reps — hold here'
-      } else if (allSetsLogged && allHitTop && !anyFailure) {
+    if (hasHardRating) {
+      status = 'review'
+      reason = 'Hard set last session — hold weight and focus on quality'
+    } else if (hasRepData) {
+      if (allSetsLogged && allHitTop) {
         status = 'increase'
-        reason = 'Hit top of all rep targets with room in the tank'
-      } else if (anyFailure && allHitTop) {
-        // Went to failure but completed all top reps — could increase, but be conservative
+        reason = 'Hit top of all rep targets — ready to go heavier'
+      } else if (anyBelowFloor) {
         status = 'hold'
-        reason = 'Completed all reps but hit failure — consolidate before increasing'
+        reason = 'Some sets fell below target range — consolidate here'
       } else if (easyCount >= 2) {
         status = 'increase'
         reason = `${easyCount} sets felt easy`
       }
     } else {
-      // Ratings-only fallback (no rep data logged)
-      if (hasHardRating) {
-        status = 'review'
-        reason = 'Hard set last session — hold current weight'
-      } else if (easyCount >= 2) {
+      // Ratings-only fallback (no reps logged)
+      if (easyCount >= 2) {
         status = 'increase'
         reason = `${easyCount} easy sets — ready to go heavier`
       } else if (allDates.length >= 2) {
-        const prevDate     = allDates[1]
-        const prevRatings  = byExRatings[exId]?.[prevDate] ?? {}
-        const prevAllGood  = Object.values(prevRatings).length > 0 &&
+        const prevDate    = allDates[1]
+        const prevRatings = byExRatings[exId]?.[prevDate] ?? {}
+        const prevAllGood = Object.values(prevRatings).length > 0 &&
           Object.values(prevRatings).every(r => r === 'good')
         if (allGoodRatings && prevAllGood) {
           status = 'increase'
@@ -157,19 +153,16 @@ export function computeProgression(recentRatings = [], weightHistory = [], recen
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// computeNextWeights
-// Called at session save. Per-set targets written to exercise_weights for the
-// NEXT session. Rep data is the primary signal; ratings fall back when absent.
+// computeNextWeights — called at session save; sets next-session starting weights
 //
-// Guard: any hard rating OR failure-before-top on ANY set blocks ALL increases
-// for that exercise (don't reward one easy set when another was a struggle).
+// Per-set: hit top of rep range → increase. Hard rating on any set blocks the
+// whole exercise. No rep data falls back to easy rating → increase.
 // ─────────────────────────────────────────────────────────────────────────────
 export function computeNextWeights(dayExercises, exerciseSnapshot, todayRatings = [], todayReps = []) {
-  // Normalise reps into { [exId]: { [setNum]: { reps, toFailure } } }
   const repsByEx = {}
   for (const r of todayReps) {
     if (!repsByEx[r.exercise_id]) repsByEx[r.exercise_id] = {}
-    repsByEx[r.exercise_id][r.set_number] = { reps: r.reps, toFailure: r.to_failure }
+    repsByEx[r.exercise_id][r.set_number] = { reps: r.reps }
   }
 
   const result = {}
@@ -178,19 +171,11 @@ export function computeNextWeights(dayExercises, exerciseSnapshot, todayRatings 
     const snap = exerciseSnapshot.find(e => e.id === ex.id)
     if (!snap || snap.sets.length === 0) continue
 
-    const exRatings = todayRatings.filter(r => r.exercise_id === ex.id)
-    const exReps    = repsByEx[ex.id] ?? {}
-    const scheme    = REP_SCHEMES[ex.id] ?? []
-    const inc       = getIncrease(ex.id)
-
+    const exRatings     = todayRatings.filter(r => r.exercise_id === ex.id)
+    const exReps        = repsByEx[ex.id] ?? {}
+    const scheme        = REP_SCHEMES[ex.id] ?? []
+    const inc           = getIncrease(ex.id)
     const hasHardRating = exRatings.some(r => r.rating === 'hard')
-    const anyFailure    = Object.values(exReps).some(r => r.toFailure)
-    const allHitTop     = scheme.length > 0 && scheme.every((range, i) =>
-      (exReps[i + 1]?.reps ?? 0) >= range.hi
-    )
-
-    // Exercise-level block: hard rating, OR failure without completing all reps
-    const blockAll = hasHardRating || (anyFailure && !allHitTop)
 
     const nextW = {}
     for (const s of snap.sets) {
@@ -199,12 +184,10 @@ export function computeNextWeights(dayExercises, exerciseSnapshot, todayRatings 
       const range   = scheme[s.set - 1] ?? { lo: 8, hi: 12 }
 
       let increase = false
-      if (!blockAll) {
+      if (!hasHardRating) {
         if (repData?.reps != null) {
-          // Rep data present: hit top of range and didn't fail → increase
-          increase = repData.reps >= range.hi && !repData.toFailure && rating !== 'hard'
+          increase = repData.reps >= range.hi
         } else {
-          // Ratings-only fallback
           increase = rating === 'easy'
         }
       }
@@ -222,13 +205,13 @@ export function computeNextWeights(dayExercises, exerciseSnapshot, todayRatings 
 // getProgressionSummary — human-readable post-save toast content
 // ─────────────────────────────────────────────────────────────────────────────
 export function getProgressionSummary(dayExercises, exerciseSnapshot, todayRatings = [], todayReps = []) {
-  const increases  = []
-  const hardFlags  = []
+  const increases = []
+  const hardFlags = []
 
   const repsByEx = {}
   for (const r of todayReps) {
     if (!repsByEx[r.exercise_id]) repsByEx[r.exercise_id] = {}
-    repsByEx[r.exercise_id][r.set_number] = { reps: r.reps, toFailure: r.to_failure }
+    repsByEx[r.exercise_id][r.set_number] = { reps: r.reps }
   }
 
   for (const ex of dayExercises) {
@@ -243,16 +226,15 @@ export function getProgressionSummary(dayExercises, exerciseSnapshot, todayRatin
     if (exRatings.length === 0 && Object.keys(exReps).length === 0) continue
 
     const hasHardRating = exRatings.some(r => r.rating === 'hard')
-    const anyFailure    = Object.values(exReps).some(r => r.toFailure)
+    const hasRepData    = Object.keys(exReps).length > 0
     const allHitTop     = scheme.length > 0 && scheme.every((range, i) =>
       (exReps[i + 1]?.reps ?? 0) >= range.hi
     )
-    const anyEasy       = exRatings.some(r => r.rating === 'easy')
-    const hasRepData    = Object.keys(exReps).length > 0
+    const anyEasy = exRatings.some(r => r.rating === 'easy')
 
-    if (hasHardRating || (anyFailure && !allHitTop)) {
+    if (hasHardRating) {
       hardFlags.push(ex.name)
-    } else if ((hasRepData && allHitTop && !anyFailure) || (!hasRepData && anyEasy)) {
+    } else if ((hasRepData && allHitTop) || (!hasRepData && anyEasy)) {
       increases.push({ name: ex.name, inc })
     }
   }
