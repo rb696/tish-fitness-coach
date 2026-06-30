@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { WORKOUT_DAYS } from '../data/workoutPlan'
 import { supabase } from '../lib/supabase'
 import { computeProgression, computeNextWeights, getProgressionSummary } from '../lib/progression'
@@ -16,6 +16,33 @@ export default function Gym() {
   const [ratings, setRatings] = useState({})           // { [exerciseId]: { [setNum]: 'easy'|'good'|'hard' } }
   const [progressionHints, setProgressionHints] = useState({}) // { [exerciseId]: { status, suggested, ... } }
   const [saveToast, setSaveToast] = useState(null)             // { increases: [...], hardFlags: [...] }
+  const timerRef = useRef(null)
+  const [restTimer, setRestTimer] = useState(null)
+
+  function startRestTimer(exerciseId, restSeconds) {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setRestTimer({ exerciseId, secondsLeft: restSeconds, totalSeconds: restSeconds, done: false })
+    timerRef.current = setInterval(() => {
+      setRestTimer(prev => {
+        if (!prev) return null
+        if (prev.secondsLeft <= 1) {
+          clearInterval(timerRef.current)
+          navigator.vibrate?.([150, 50, 150])
+          return { ...prev, secondsLeft: 0, done: true }
+        }
+        return { ...prev, secondsLeft: prev.secondsLeft - 1 }
+      })
+    }, 1000)
+  }
+
+  function skipRestTimer() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setRestTimer(null)
+  }
+
+  function addRestTime(seconds) {
+    setRestTimer(prev => prev ? { ...prev, secondsLeft: prev.secondsLeft + seconds, done: false } : null)
+  }
 
   const day = WORKOUT_DAYS.find(d => d.id === activeTab)
 
@@ -25,6 +52,15 @@ export default function Gym() {
     fetchRatingsAndHistory()
     cleanupOrphanedData()
   }, [])
+
+  useEffect(() => {
+    if (restTimer?.done) {
+      const t = setTimeout(() => setRestTimer(null), 4000)
+      return () => clearTimeout(t)
+    }
+  }, [restTimer?.done])
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
 
   useEffect(() => {
     if (activeTab === 'sessions') fetchSessions()
@@ -369,9 +405,16 @@ export default function Gym() {
                 suggestion={progressionHints[ex.id]}
                 comment={logs[ex.id]}
                 onSaveSetWeight={(setNum, weight) => saveSetWeight(ex.id, setNum, weight)}
-                onRate={(setNum, rating) => saveRating(ex.id, setNum, rating)}
+                onRate={(setNum, rating) => {
+                  const prevRating = ratings[ex.id]?.[setNum]
+                  saveRating(ex.id, setNum, rating)
+                  if (prevRating !== rating) startRestTimer(ex.id, ex.restSeconds ?? 60)
+                }}
                 onComment={() => setCommentModal(ex)}
                 onHistory={() => setHistoryModal(ex)}
+                restTimer={restTimer?.exerciseId === ex.id ? restTimer : null}
+                onSkipTimer={skipRestTimer}
+                onAddTime={addRestTime}
               />
             ))}
           </div>
@@ -591,7 +634,7 @@ const WARMUP_DEFS = [
   { key: 'w3', label: 'W3', reps: '4r',  pct: 0.85 },
 ]
 
-function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, suggestion, comment, onSaveSetWeight, onRate, onComment, onHistory }) {
+function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, suggestion, comment, onSaveSetWeight, onRate, onComment, onHistory, restTimer, onSkipTimer, onAddTime }) {
   const [editingWeightKey, setEditingWeightKey] = useState(null)
   const [inputVal, setInputVal] = useState('')
 
@@ -691,7 +734,7 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
             </>
           )}
 
-          {/* Working sets */}
+          {/* Working sets — rest timer shows below after rating */}
           {exercise.repScheme.map((reps, i) => {
             const setNum = i + 1
             const w = setWeights[setNum]
@@ -744,6 +787,14 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
               </div>
             )
           })}
+
+          {restTimer && (
+            <RestTimerPill
+              timer={restTimer}
+              onSkip={onSkipTimer}
+              onAdd15={() => onAddTime(15)}
+            />
+          )}
         </div>
 
         {suggestion?.status === 'increase' ? (
@@ -774,6 +825,39 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function RestTimerPill({ timer, onSkip, onAdd15 }) {
+  const { secondsLeft, totalSeconds, done } = timer
+  const pct = done ? 0 : (secondsLeft / totalSeconds) * 100
+  const mins = Math.floor(secondsLeft / 60)
+  const secs = secondsLeft % 60
+
+  return (
+    <div className={`mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2 ${done ? 'bg-emerald-500/10' : 'bg-white/5'}`}>
+      <span className={`text-[10px] font-semibold tracking-widest uppercase shrink-0 ${done ? 'text-emerald-500/70' : 'text-amber-500/60'}`}>
+        {done ? 'go!' : 'rest'}
+      </span>
+      <span className={`text-sm font-mono font-bold tabular-nums shrink-0 w-9 ${done ? 'text-emerald-400' : 'text-white'}`}>
+        {done ? '0:00' : `${mins}:${String(secs).padStart(2, '0')}`}
+      </span>
+      <div className="flex-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-[width] duration-[950ms] ${done ? 'bg-emerald-500/40' : 'bg-amber-500/50'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {!done ? (
+        <div className="flex items-center gap-2 shrink-0">
+          <button type="button" onClick={onAdd15} className="text-[11px] text-gray-500 active:text-white px-0.5">+15</button>
+          <span className="text-gray-700 text-[10px]">·</span>
+          <button type="button" onClick={onSkip} className="text-[11px] text-gray-500 active:text-white px-0.5">skip</button>
+        </div>
+      ) : (
+        <button type="button" onClick={onSkip} className="text-emerald-400 text-[11px] font-bold active:text-emerald-300 shrink-0">✓</button>
+      )}
     </div>
   )
 }

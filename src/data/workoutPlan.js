@@ -10,6 +10,7 @@ export const WORKOUT_DAYS = [
         name: 'Hammer Strength Horizontal Chest Press',
         warmupSets: 2,
         repScheme: ['8-12', '8-12', '8-12'],
+        restSeconds: 120,
         note: 'Shoulder-safe fixed path — primary chest movement',
       },
       {
@@ -17,6 +18,7 @@ export const WORKOUT_DAYS = [
         name: 'Machine Shoulder Press (fixed path)',
         warmupSets: 2,
         repScheme: ['8-12', '8-12', '8-12'],
+        restSeconds: 90,
         note: 'Fixed path only — replaces Arnold Press for shoulder safety',
       },
       {
@@ -24,6 +26,7 @@ export const WORKOUT_DAYS = [
         name: 'Pec Deck',
         warmupSets: 1,
         repScheme: ['10-15', '10-15'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -31,6 +34,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Lateral Raise',
         warmupSets: 1,
         repScheme: ['12-15', '12-15'],
+        restSeconds: 60,
         note: 'Low pulley, light weight, strict form',
       },
       {
@@ -38,6 +42,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Bar Tricep Pushdown',
         warmupSets: 1,
         repScheme: ['10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
     ],
@@ -53,6 +58,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Wide Grip Lat Pulldown',
         warmupSets: 2,
         repScheme: ['8-12', '8-12', '8-12'],
+        restSeconds: 120,
         note: 'Vertical pull for lat width',
       },
       {
@@ -60,6 +66,7 @@ export const WORKOUT_DAYS = [
         name: 'Dual Cable Row',
         warmupSets: 2,
         repScheme: ['8-12', '8-12'],
+        restSeconds: 90,
         note: '',
       },
       {
@@ -67,6 +74,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Rear Delt Fly',
         warmupSets: 1,
         repScheme: ['10-12', '10-15'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -74,6 +82,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Bicep Curl',
         warmupSets: 1,
         repScheme: ['10-14', '10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -81,6 +90,7 @@ export const WORKOUT_DAYS = [
         name: 'Face Pull',
         warmupSets: 1,
         repScheme: ['12-15', '12-15'],
+        restSeconds: 60,
         note: 'Rear delt and shoulder health — cable at head height, rope attachment',
       },
     ],
@@ -96,6 +106,7 @@ export const WORKOUT_DAYS = [
         name: 'Leg Press',
         warmupSets: 3,
         repScheme: ['8-10', '8-10', '8-10'],
+        restSeconds: 120,
         note: '',
       },
       {
@@ -103,6 +114,7 @@ export const WORKOUT_DAYS = [
         name: 'Romanian Deadlift',
         warmupSets: 3,
         repScheme: ['8-10', '8-10', '8-10'],
+        restSeconds: 120,
         note: 'Hip hinge — posterior chain anchor. Control the descent, hinge at hips.',
       },
       {
@@ -110,6 +122,7 @@ export const WORKOUT_DAYS = [
         name: 'Standing Calf Raise Machine',
         warmupSets: 1,
         repScheme: ['10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -117,6 +130,7 @@ export const WORKOUT_DAYS = [
         name: 'Seated Hamstring Curl Machine',
         warmupSets: 1,
         repScheme: ['10-15', '10-15'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -124,6 +138,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Crunch (kneeling)',
         warmupSets: 1,
         repScheme: ['12-15', '12-15', '12-15'],
+        restSeconds: 60,
         note: 'Core — done at end of session',
       },
     ],
@@ -139,6 +154,7 @@ export const WORKOUT_DAYS = [
         name: 'Chest-Supported Machine Row',
         warmupSets: 2,
         repScheme: ['8-12', '8-12', '8-12'],
+        restSeconds: 90,
         note: 'Opens the session — balances push:pull ratio. Full stretch at bottom, squeeze at top.',
       },
       {
@@ -146,6 +162,7 @@ export const WORKOUT_DAYS = [
         name: 'Hammer Strength Horizontal Chest Press',
         warmupSets: 2,
         repScheme: ['6-8', '6-10', '6-10'],
+        restSeconds: 120,
         note: 'Primary chest movement — shoulder safe',
       },
       {
@@ -153,6 +170,7 @@ export const WORKOUT_DAYS = [
         name: 'Dual Rope Pushdowns',
         warmupSets: 1,
         repScheme: ['10-14', '10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -160,6 +178,7 @@ export const WORKOUT_DAYS = [
         name: 'Pec Deck',
         warmupSets: 1,
         repScheme: ['10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
       {
@@ -167,6 +186,7 @@ export const WORKOUT_DAYS = [
         name: 'Cable Rope Bicep Curl',
         warmupSets: 1,
         repScheme: ['10-14', '10-14', '10-14'],
+        restSeconds: 60,
         note: '',
       },
     ],
