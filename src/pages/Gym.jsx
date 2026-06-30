@@ -585,25 +585,39 @@ const RATING_CONFIG = [
   { key: 'hard', label: 'H', active: 'bg-red-500/20 text-red-400' },
 ]
 
+const WARMUP_DEFS = [
+  { key: 'w1', label: 'W1', reps: '10r', pct: 0.50 },
+  { key: 'w2', label: 'W2', reps: '6r',  pct: 0.70 },
+  { key: 'w3', label: 'W3', reps: '4r',  pct: 0.85 },
+]
+
 function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, suggestion, comment, onSaveSetWeight, onRate, onComment, onHistory }) {
-  const [editingSet, setEditingSet] = useState(null)
+  const [editingWeightKey, setEditingWeightKey] = useState(null)
   const [inputVal, setInputVal] = useState('')
 
-  function startEdit(setIdx) {
-    setEditingSet(setIdx)
-    setInputVal(setWeights[setIdx + 1] ?? '')
+  const warmupCount = exercise.warmupSets || 0
+  const s1Weight = setWeights[1]
+
+  function startEditSet(i) {
+    setEditingWeightKey(i + 1)
+    setInputVal(setWeights[i + 1] ?? '')
+  }
+
+  function startEditWarmup(key, pct) {
+    const stored = setWeights[key]
+    const autoVal = s1Weight && pct ? Math.round(s1Weight * pct) : null
+    setEditingWeightKey(key)
+    setInputVal(stored != null ? String(stored) : (autoVal != null ? String(autoVal) : ''))
   }
 
   function commitEdit() {
     if (inputVal !== '' && !isNaN(inputVal)) {
-      onSaveSetWeight(editingSet + 1, parseFloat(inputVal))
+      onSaveSetWeight(editingWeightKey, parseFloat(inputVal))
     }
-    setEditingSet(null)
+    setEditingWeightKey(null)
   }
 
   const allWeightsLogged = exercise.repScheme.every((_, i) => setWeights[i + 1])
-  const warmupCount = exercise.warmupSets || 0
-  const s1Weight = setWeights[1]
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
@@ -631,24 +645,43 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
         </div>
 
         <div className="space-y-2">
-          {/* Warmup sets — auto-calculated, no rating buttons */}
+          {/* Warmup sets — editable weight, no rating buttons */}
           {warmupCount > 0 && (
             <>
-              {Array.from({ length: warmupCount }, (_, wi) => {
-                const pct = wi === 0 ? 0.5 : 0.7
-                const reps = wi === 0 ? '10r' : '6r'
-                const label = wi === 0 ? 'W1' : 'W2'
-                const wWeight = s1Weight ? Math.round(s1Weight * pct) : null
+              {WARMUP_DEFS.slice(0, warmupCount).map(({ key, label, reps, pct }) => {
+                const autoWeight = s1Weight ? Math.round(s1Weight * pct) : null
+                const displayWeight = setWeights[key] ?? autoWeight
+                const isEditingThis = editingWeightKey === key
                 return (
-                  <div key={label} className="flex items-center gap-2">
+                  <div key={key} className="flex items-center gap-2">
                     <span className="text-amber-500/50 text-xs w-7 shrink-0">{label}</span>
                     <span className="text-gray-600 text-xs w-12 shrink-0">{reps}</span>
                     <div className="flex-1 flex items-center gap-2 justify-end">
-                      <span className={`px-2 py-1.5 rounded-lg text-xs min-w-[58px] text-center ${
-                        wWeight ? 'bg-amber-500/10 text-amber-600/70' : 'bg-white/5 text-gray-600'
-                      }`}>
-                        {wWeight ? `${wWeight}kg` : '—kg'}
-                      </span>
+                      {isEditingThis ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            type="number"
+                            inputMode="decimal"
+                            value={inputVal}
+                            onChange={e => setInputVal(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                            className="w-16 bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:ring-1 focus:ring-amber-500/50"
+                            placeholder="0"
+                          />
+                          <span className="text-gray-400 text-xs">kg</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEditWarmup(key, pct)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium min-w-[58px] text-center transition-colors active:scale-95 ${
+                            displayWeight != null ? 'bg-amber-500/10 text-amber-600/70' : 'bg-white/5 text-gray-600 border border-amber-500/10 border-dashed'
+                          }`}
+                        >
+                          {displayWeight != null ? `${displayWeight}kg` : '—kg'}
+                        </button>
+                      )}
                       <span className="w-20 text-center text-[9px] text-amber-500/40 font-semibold uppercase tracking-widest">WARMUP</span>
                     </div>
                   </div>
@@ -662,7 +695,7 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
           {exercise.repScheme.map((reps, i) => {
             const setNum = i + 1
             const w = setWeights[setNum]
-            const isEditing = editingSet === i
+            const isEditing = editingWeightKey === setNum
             const currentRating = setRatings[setNum]
             return (
               <div key={i} className="flex items-center gap-2">
@@ -686,7 +719,7 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
                     </div>
                   ) : (
                     <button
-                      onClick={() => startEdit(i)}
+                      onClick={() => startEditSet(i)}
                       className={`px-2 py-1.5 rounded-lg text-sm font-medium min-w-[58px] text-center transition-colors active:scale-95 ${
                         w ? 'bg-white/10 text-white' : 'bg-white/5 text-gray-500 border border-white/10 border-dashed'
                       }`}

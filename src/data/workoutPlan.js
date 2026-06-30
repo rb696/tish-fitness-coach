@@ -3,20 +3,20 @@ export const WORKOUT_DAYS = [
     id: 'push',
     name: 'Push',
     color: '#6366f1',
-    totalSets: 10,
+    totalSets: 12,
     exercises: [
       {
         id: 'push_1',
         name: 'Hammer Strength Horizontal Chest Press',
         warmupSets: 2,
-        repScheme: ['8-12', '8-12'],
+        repScheme: ['8-12', '8-12', '8-12'],
         note: 'Shoulder-safe fixed path — primary chest movement',
       },
       {
         id: 'push_3',
         name: 'Machine Shoulder Press (fixed path)',
         warmupSets: 2,
-        repScheme: ['8-12', '8-12'],
+        repScheme: ['8-12', '8-12', '8-12'],
         note: 'Fixed path only — replaces Arnold Press for shoulder safety',
       },
       {
@@ -46,13 +46,13 @@ export const WORKOUT_DAYS = [
     id: 'pull',
     name: 'Pull',
     color: '#10b981',
-    totalSets: 11,
+    totalSets: 12,
     exercises: [
       {
         id: 'pull_1',
         name: 'Cable Wide Grip Lat Pulldown',
         warmupSets: 2,
-        repScheme: ['8-12', '8-12'],
+        repScheme: ['8-12', '8-12', '8-12'],
         note: 'Vertical pull for lat width',
       },
       {
@@ -89,19 +89,19 @@ export const WORKOUT_DAYS = [
     id: 'legs',
     name: 'Core & Legs',
     color: '#f59e0b',
-    totalSets: 12,
+    totalSets: 13,
     exercises: [
       {
         id: 'legs_1',
         name: 'Leg Press',
-        warmupSets: 2,
-        repScheme: ['8-10', '8-10'],
+        warmupSets: 3,
+        repScheme: ['8-10', '8-10', '8-10'],
         note: '',
       },
       {
         id: 'legs_rdl',
         name: 'Romanian Deadlift',
-        warmupSets: 2,
+        warmupSets: 3,
         repScheme: ['8-10', '8-10', '8-10'],
         note: 'Hip hinge — posterior chain anchor. Control the descent, hinge at hips.',
       },

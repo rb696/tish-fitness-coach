@@ -30,7 +30,10 @@ export function computeProgression(recentRatings = [], weightHistory = []) {
   const latestWeight = {}
   for (const h of weightHistory) {
     if (latestWeight[h.exercise_id] !== undefined) continue
-    const vals = Object.values(h.weights ?? {}).filter(v => v != null)
+    const vals = Object.entries(h.weights ?? {})
+      .filter(([k]) => !isNaN(Number(k)))
+      .map(([, v]) => v)
+      .filter(v => v != null)
     latestWeight[h.exercise_id] = vals.length ? Math.max(...vals) : null
   }
 

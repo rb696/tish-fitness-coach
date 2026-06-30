@@ -73,6 +73,22 @@ export default function Weight() {
   const change = (latest - first).toFixed(1)
   const changePos = parseFloat(change) >= 0
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const weekLogs = logs.filter(l => new Date(l.logged_date + 'T00:00:00') >= sevenDaysAgo)
+  let weeklyTrend = null
+  if (weekLogs.length >= 2) {
+    const wFirst = weekLogs[0]
+    const wLast = weekLogs[weekLogs.length - 1]
+    const wDiff = parseFloat((wLast.weight_kg - wFirst.weight_kg).toFixed(1))
+    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+    weeklyTrend = {
+      diff: wDiff,
+      range: `${fmtD(wFirst.logged_date)} – ${fmtD(wLast.logged_date)}`,
+      label: wDiff < 0 ? `Lost ${Math.abs(wDiff)}kg` : wDiff > 0 ? `Gained ${wDiff}kg` : 'No change',
+      positive: wDiff <= 0,
+    }
+  }
+
   return (
     <div className="pb-28 max-w-lg mx-auto">
       {/* Header */}
@@ -96,6 +112,23 @@ export default function Weight() {
           <p className={`font-bold text-lg ${changePos ? 'text-amber-400' : 'text-emerald-400'}`}>
             {changePos ? '+' : ''}{change}kg
           </p>
+        </div>
+      </div>
+
+      {/* Weekly Trend */}
+      <div className="px-4 mb-6">
+        <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 p-4">
+          <p className="text-gray-400 text-[10px] font-semibold tracking-widest uppercase mb-2">This Week</p>
+          {weeklyTrend ? (
+            <div className="flex items-center justify-between">
+              <p className="text-gray-500 text-xs">{weeklyTrend.range}</p>
+              <p className={`font-bold text-base ${weeklyTrend.positive ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {weeklyTrend.label}
+              </p>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Not enough data — log at least 2 weigh-ins this week</p>
+          )}
         </div>
       </div>
 
