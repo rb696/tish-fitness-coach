@@ -10,12 +10,13 @@ export default function Gym() {
   const [logs, setLogs] = useState({})
   const [commentModal, setCommentModal] = useState(null)
   const [historyModal, setHistoryModal] = useState(null)
-  const [workoutSaved, setWorkoutSaved] = useState(null) // null | 'saving' | 'done'
+  const [workoutSaved, setWorkoutSaved] = useState(null)
   const [savedSessions, setSavedSessions] = useState([])
   const [loadingSessions, setLoadingSessions] = useState(false)
-  const [ratings, setRatings] = useState({})           // { [exerciseId]: { [setNum]: 'easy'|'good'|'hard' } }
-  const [progressionHints, setProgressionHints] = useState({}) // { [exerciseId]: { status, suggested, ... } }
-  const [saveToast, setSaveToast] = useState(null)             // { increases: [...], hardFlags: [...] }
+  const [ratings, setRatings] = useState({})
+  const [repLogs, setRepLogs] = useState({})       // { [exId]: { [setNum]: { reps, toFailure } } }
+  const [progressionHints, setProgressionHints] = useState({})
+  const [saveToast, setSaveToast] = useState(null)
   const timerRef = useRef(null)
   const [restTimer, setRestTimer] = useState(null)
 
@@ -90,11 +91,18 @@ export default function Gym() {
     const todayStr = new Date().toISOString().split('T')[0]
     const thirtyAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    const [{ data: todayRatings }, { data: histData }, { data: allRatings }, { data: sessions }] = await Promise.all([
+    const [
+      { data: todayRatings },
+      { data: histData },
+      { data: allRatings },
+      { data: sessions },
+      { data: allReps },
+    ] = await Promise.all([
       supabase.from('set_ratings').select('*').eq('log_date', todayStr),
       supabase.from('exercise_weight_history').select('*').order('log_date', { ascending: false }).limit(100),
       supabase.from('set_ratings').select('*').gte('log_date', thirtyAgo),
       supabase.from('workout_sessions').select('saved_at').gte('saved_at', thirtyAgo + 'T00:00:00'),
+      supabase.from('set_reps').select('*').gte('log_date', thirtyAgo),
     ])
 
     if (todayRatings) {
@@ -106,20 +114,28 @@ export default function Gym() {
       setRatings(r)
     }
 
-    if (allRatings && histData) {
-      // Only count ratings for dates that have a saved session (plus today for in-progress sets).
+    // Set today's rep logs from the 30-day fetch
+    if (allReps) {
+      const todayRepsData = allReps.filter(r => r.log_date === todayStr)
+      const rl = {}
+      todayRepsData.forEach(r => {
+        if (!rl[r.exercise_id]) rl[r.exercise_id] = {}
+        rl[r.exercise_id][r.set_number] = { reps: r.reps, toFailure: r.to_failure }
+      })
+      setRepLogs(rl)
+    }
+
+    if (allRatings && histData && allReps) {
       const validDates = new Set([
         todayStr,
         ...(sessions || []).map(s => s.saved_at.split('T')[0]),
       ])
       const liveRatings = allRatings.filter(r => validDates.has(r.log_date))
-      setProgressionHints(computeProgression(liveRatings, histData))
+      const liveReps    = allReps.filter(r => validDates.has(r.log_date))
+      setProgressionHints(computeProgression(liveRatings, histData, liveReps))
     }
   }
 
-  // Runs once on mount. Deletes exercise_weight_history rows for dates that have
-  // no corresponding workout_session (e.g. from sessions deleted before this fix),
-  // then resets exercise_weights to {} for any exercise whose history was fully wiped.
   async function cleanupOrphanedData() {
     const [{ data: sessions }, { data: history }] = await Promise.all([
       supabase.from('workout_sessions').select('saved_at'),
@@ -127,16 +143,12 @@ export default function Gym() {
     ])
     if (!history || history.length === 0) return
 
-    // For weight history: a date is valid only if a session was actually saved on that date.
-    // Today is NOT auto-exempted here — if no session was saved today, today's history is
-    // also orphaned (e.g. from a test session that was deleted).
     const sessionDates = new Set((sessions || []).map(s => s.saved_at.split('T')[0]))
     const orphaned = history.filter(h => !sessionDates.has(h.log_date))
     if (orphaned.length === 0) return
 
     await supabase.from('exercise_weight_history').delete().in('id', orphaned.map(h => h.id))
 
-    // Exercises whose history was entirely wiped need their current weights reset to {}
     const stillValid = new Set(history.filter(h => sessionDates.has(h.log_date)).map(h => h.exercise_id))
     const toReset = [...new Set(orphaned.map(h => h.exercise_id))].filter(id => !stillValid.has(id))
 
@@ -154,7 +166,7 @@ export default function Gym() {
   async function saveRating(exerciseId, setNum, rating) {
     const todayStr = new Date().toISOString().split('T')[0]
     const current = ratings[exerciseId]?.[setNum]
-    const next = current === rating ? null : rating  // tap same rating to deselect
+    const next = current === rating ? null : rating
 
     let dbError = null
     if (next === null) {
@@ -181,6 +193,22 @@ export default function Gym() {
     setRatings(prev => ({
       ...prev,
       [exerciseId]: { ...(prev[exerciseId] || {}), [setNum]: next },
+    }))
+  }
+
+  async function saveRepLog(exerciseId, setNum, reps, toFailure) {
+    const todayStr = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('set_reps').upsert(
+      { exercise_id: exerciseId, log_date: todayStr, set_number: setNum, reps: reps ?? null, to_failure: toFailure ?? false },
+      { onConflict: 'exercise_id,log_date,set_number' }
+    )
+    if (error) {
+      console.error('saveRepLog failed:', error.message)
+      return
+    }
+    setRepLogs(prev => ({
+      ...prev,
+      [exerciseId]: { ...(prev[exerciseId] || {}), [setNum]: { reps, toFailure } },
     }))
   }
 
@@ -226,11 +254,20 @@ export default function Gym() {
 
   async function saveComment(exerciseId, comment) {
     const todayStr = new Date().toISOString().split('T')[0]
-    const { error } = await supabase.from('exercise_comments').upsert(
+    const { data, error } = await supabase.from('exercise_comments').upsert(
       { exercise_id: exerciseId, comment, log_date: todayStr },
       { onConflict: 'exercise_id,log_date' }
-    )
-    if (error) { console.error('saveComment failed:', error.message); return }
+    ).select()
+
+    if (error || !data || data.length === 0) {
+      const msg = error?.message ?? 'Row not written — RLS may be blocking the insert'
+      console.error('saveComment failed:', msg)
+      alert(
+        `Comment save failed: ${msg}\n\nFix: run this in your Supabase SQL editor:\nalter table exercise_comments disable row level security;`
+      )
+      return
+    }
+
     setLogs(prev => ({ ...prev, [exerciseId]: comment }))
     setCommentModal(null)
   }
@@ -241,9 +278,9 @@ export default function Gym() {
 
     const exercises = day.exercises
       .map(ex => {
-        const setWeights = weights[ex.id] || {}
+        const setWeightsEx = weights[ex.id] || {}
         const sets = ex.repScheme
-          .map((reps, i) => ({ set: i + 1, reps, weight: setWeights[i + 1] ?? null }))
+          .map((reps, i) => ({ set: i + 1, reps, weight: setWeightsEx[i + 1] ?? null }))
           .filter(s => s.weight !== null)
         return { id: ex.id, name: ex.name, sets }
       })
@@ -268,7 +305,6 @@ export default function Gym() {
       return
     }
 
-    // Fetch today's ratings to compute per-set progressive overload targets
     const todayStr = new Date().toISOString().split('T')[0]
     const { data: todayRatings, error: ratingErr } = await supabase
       .from('set_ratings')
@@ -277,12 +313,24 @@ export default function Gym() {
       .in('exercise_id', day.exercises.map(ex => ex.id))
     if (ratingErr) console.error('fetchRatings for progression failed:', ratingErr.message)
 
-    // Compute per-set targets for the next session based on today's ratings
-    const nextWeights = computeNextWeights(day.exercises, exercises, todayRatings || [])
-    const summary = getProgressionSummary(day.exercises, exercises, todayRatings || [])
+    // Convert repLogs state to the flat array format progression functions expect
+    const todayRepsFlat = []
+    for (const [exId, setMap] of Object.entries(repLogs)) {
+      for (const [setNum, data] of Object.entries(setMap)) {
+        if (data.reps != null || data.toFailure) {
+          todayRepsFlat.push({
+            exercise_id: exId,
+            set_number: parseInt(setNum, 10),
+            reps: data.reps,
+            to_failure: data.toFailure,
+          })
+        }
+      }
+    }
 
-    // Write next-session targets to exercise_weights — replaces old blanket delete
-    // Only trained exercises get updated; untouched exercises keep their existing values
+    const nextWeights = computeNextWeights(day.exercises, exercises, todayRatings || [], todayRepsFlat)
+    const summary     = getProgressionSummary(day.exercises, exercises, todayRatings || [], todayRepsFlat)
+
     await Promise.all(
       Object.entries(nextWeights).map(([exId, nextW]) =>
         Object.keys(nextW).length > 0
@@ -294,17 +342,19 @@ export default function Gym() {
       )
     )
 
-    // Clear local state so inputs go blank immediately after save
+    // Clear local state for next session
     const cleared = {}
-    day.exercises.forEach(ex => { cleared[ex.id] = {} })
-    setWeights(prev => ({ ...prev, ...cleared }))
-
-    // Clear visual ratings — don't carry this session's ratings into the next open
     const clearedRatings = {}
-    day.exercises.forEach(ex => { clearedRatings[ex.id] = {} })
+    const clearedReps = {}
+    day.exercises.forEach(ex => {
+      cleared[ex.id] = {}
+      clearedRatings[ex.id] = {}
+      clearedReps[ex.id] = {}
+    })
+    setWeights(prev => ({ ...prev, ...cleared }))
     setRatings(prev => ({ ...prev, ...clearedRatings }))
+    setRepLogs(prev => ({ ...prev, ...clearedReps }))
 
-    // Show progression summary toast if any sets triggered a change
     if (summary.increases.length > 0 || summary.hardFlags.length > 0) {
       setSaveToast(summary)
       setTimeout(() => setSaveToast(null), 6000)
@@ -326,16 +376,15 @@ export default function Gym() {
     const exerciseIds = (session.exercises || []).map(ex => ex.id)
 
     if (exerciseIds.length > 0) {
-      // Delete orphaned ratings and weight history for this session's date
       await Promise.all([
         supabase.from('set_ratings').delete()
           .eq('log_date', sessionDate).in('exercise_id', exerciseIds),
         supabase.from('exercise_weight_history').delete()
           .eq('log_date', sessionDate).in('exercise_id', exerciseIds),
+        supabase.from('set_reps').delete()
+          .eq('log_date', sessionDate).in('exercise_id', exerciseIds),
       ])
 
-      // For each exercise, restore exercise_weights from the most recent remaining
-      // history entry, or clear to {} if no history is left.
       const restorations = {}
       await Promise.all(exerciseIds.map(async exId => {
         const { data } = await supabase
@@ -402,6 +451,7 @@ export default function Gym() {
                 dayColor={day.color}
                 setWeights={weights[ex.id] || {}}
                 setRatings={ratings[ex.id] || {}}
+                repLogs={repLogs[ex.id] || {}}
                 suggestion={progressionHints[ex.id]}
                 comment={logs[ex.id]}
                 onSaveSetWeight={(setNum, weight) => saveSetWeight(ex.id, setNum, weight)}
@@ -410,6 +460,7 @@ export default function Gym() {
                   saveRating(ex.id, setNum, rating)
                   if (prevRating !== rating) startRestTimer(ex.id, ex.restSeconds ?? 60)
                 }}
+                onSaveRepLog={(setNum, reps, toFailure) => saveRepLog(ex.id, setNum, reps, toFailure)}
                 onComment={() => setCommentModal(ex)}
                 onHistory={() => setHistoryModal(ex)}
                 restTimer={restTimer?.exerciseId === ex.id ? restTimer : null}
@@ -459,7 +510,7 @@ export default function Gym() {
                 <div>
                   <p className="text-amber-400 text-[10px] font-bold tracking-widest mb-2">HOLD WEIGHT</p>
                   {saveToast.hardFlags.map(name => (
-                    <p key={name} className="text-gray-300 text-xs py-0.5">· {name} — hard set logged</p>
+                    <p key={name} className="text-gray-300 text-xs py-0.5">· {name} — consolidate before increasing</p>
                   ))}
                 </div>
               )}
@@ -487,6 +538,8 @@ export default function Gym() {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 function SessionsView({ sessions, loading, onDelete }) {
   if (loading) {
     return (
@@ -495,7 +548,6 @@ function SessionsView({ sessions, loading, onDelete }) {
       </div>
     )
   }
-
   if (sessions.length === 0) {
     return (
       <div className="px-4 py-16 text-center">
@@ -507,7 +559,6 @@ function SessionsView({ sessions, loading, onDelete }) {
       </div>
     )
   }
-
   return (
     <div className="px-4 space-y-3">
       {sessions.map(session => (
@@ -526,13 +577,8 @@ function SessionCard({ session, onDelete }) {
   const color = day?.color ?? '#6366f1'
 
   const savedAt = new Date(session.saved_at)
-  const dateStr = savedAt.toLocaleDateString('en-AU', {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-  })
-  const timeStr = savedAt.toLocaleTimeString('en-AU', {
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  })
-
+  const dateStr = savedAt.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  const timeStr = savedAt.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true })
   const totalSets = session.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)
 
   async function handleDelete() {
@@ -542,10 +588,8 @@ function SessionCard({ session, onDelete }) {
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-      {/* div instead of button — avoids invalid nested <button> which breaks stopPropagation */}
       <div
-        role="button"
-        tabIndex={0}
+        role="button" tabIndex={0}
         onClick={() => setOpen(o => !o)}
         onKeyDown={e => e.key === 'Enter' && setOpen(o => !o)}
         className="w-full flex items-center justify-between px-4 py-4 text-left cursor-pointer"
@@ -566,14 +610,11 @@ function SessionCard({ session, onDelete }) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-gray-500">
               <polyline points="3 6 5 6 21 6" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 11v6M14 11v6" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
             </svg>
           </button>
-          <svg
-            className={`text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-          >
+          <svg className={`text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -582,17 +623,10 @@ function SessionCard({ session, onDelete }) {
       {confirming && (
         <div className="px-4 pb-3 flex items-center gap-3 border-t border-white/5 pt-3">
           <p className="text-gray-300 text-sm flex-1">Delete this session?</p>
-          <button
-            onClick={() => setConfirming(false)}
-            className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-sm active:bg-white/10"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-sm font-medium active:bg-red-500/25 disabled:opacity-50"
-          >
+          <button onClick={() => setConfirming(false)}
+            className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-sm active:bg-white/10">Cancel</button>
+          <button onClick={handleDelete} disabled={deleting}
+            className="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-sm font-medium active:bg-red-500/25 disabled:opacity-50">
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
@@ -605,10 +639,7 @@ function SessionCard({ session, onDelete }) {
               <p className="text-white text-sm font-medium mb-2">{ex.name}</p>
               <div className="flex flex-wrap gap-2">
                 {ex.sets.map(s => (
-                  <div
-                    key={s.set}
-                    className="bg-white/5 rounded-xl px-3 py-2 text-center min-w-[56px]"
-                  >
+                  <div key={s.set} className="bg-white/5 rounded-xl px-3 py-2 text-center min-w-[56px]">
                     <p className="text-gray-500 text-[10px] mb-0.5">S{s.set} · {s.reps}r</p>
                     <p className="text-white text-sm font-semibold">{s.weight}kg</p>
                   </div>
@@ -622,6 +653,8 @@ function SessionCard({ session, onDelete }) {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 const RATING_CONFIG = [
   { key: 'easy', label: 'E', active: 'bg-emerald-500/20 text-emerald-400' },
   { key: 'good', label: '✓', active: 'bg-indigo-500/20 text-indigo-400' },
@@ -634,9 +667,14 @@ const WARMUP_DEFS = [
   { key: 'w3', label: 'W3', reps: '4r',  pct: 0.85 },
 ]
 
-function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, suggestion, comment, onSaveSetWeight, onRate, onComment, onHistory, restTimer, onSkipTimer, onAddTime }) {
+function ExerciseCard({
+  exercise, index, dayColor, setWeights, setRatings, repLogs,
+  suggestion, comment, onSaveSetWeight, onRate, onSaveRepLog,
+  onComment, onHistory, restTimer, onSkipTimer, onAddTime,
+}) {
   const [editingWeightKey, setEditingWeightKey] = useState(null)
   const [inputVal, setInputVal] = useState('')
+  const [repEdits, setRepEdits] = useState({})  // { [setNum]: string } — in-progress text
 
   const warmupCount = exercise.warmupSets || 0
   const s1Weight = setWeights[1]
@@ -660,16 +698,34 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
     setEditingWeightKey(null)
   }
 
+  function commitRep(setNum) {
+    const raw = repEdits[setNum]
+    if (raw === undefined) return
+    const val = parseInt(raw, 10)
+    if (!isNaN(val) && val > 0) {
+      onSaveRepLog(setNum, val, repLogs[setNum]?.toFailure ?? false)
+    }
+  }
+
+  function toggleFailure(setNum) {
+    const current = repLogs[setNum] ?? {}
+    onSaveRepLog(setNum, current.reps ?? null, !(current.toFailure ?? false))
+  }
+
+  function getRepValue(setNum) {
+    if (repEdits[setNum] !== undefined) return repEdits[setNum]
+    return repLogs[setNum]?.reps != null ? String(repLogs[setNum].reps) : ''
+  }
+
   const allWeightsLogged = exercise.repScheme.every((_, i) => setWeights[i + 1])
 
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
       <div className="px-4 pt-4 pb-3">
+        {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-start gap-2 flex-1">
-            <span className="text-xs font-bold mt-0.5 shrink-0" style={{ color: dayColor }}>
-              {index}
-            </span>
+            <span className="text-xs font-bold mt-0.5 shrink-0" style={{ color: dayColor }}>{index}</span>
             <p className="text-white font-semibold text-sm leading-snug">{exercise.name}</p>
           </div>
           <div className="flex gap-1 shrink-0">
@@ -687,8 +743,8 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
           </div>
         </div>
 
-        <div className="space-y-2">
-          {/* Warmup sets — editable weight, no rating buttons */}
+        <div className="space-y-1.5">
+          {/* Warmup sets */}
           {warmupCount > 0 && (
             <>
               {WARMUP_DEFS.slice(0, warmupCount).map(({ key, label, reps, pct }) => {
@@ -702,26 +758,18 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
                     <div className="flex-1 flex items-center gap-2 justify-end">
                       {isEditingThis ? (
                         <div className="flex items-center gap-1">
-                          <input
-                            autoFocus
-                            type="number"
-                            inputMode="decimal"
-                            value={inputVal}
-                            onChange={e => setInputVal(e.target.value)}
-                            onBlur={commitEdit}
+                          <input autoFocus type="number" inputMode="decimal" value={inputVal}
+                            onChange={e => setInputVal(e.target.value)} onBlur={commitEdit}
                             onKeyDown={e => e.key === 'Enter' && commitEdit()}
                             className="w-16 bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:ring-1 focus:ring-amber-500/50"
-                            placeholder="0"
-                          />
+                            placeholder="0" />
                           <span className="text-gray-400 text-xs">kg</span>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => startEditWarmup(key, pct)}
+                        <button onClick={() => startEditWarmup(key, pct)}
                           className={`px-2 py-1.5 rounded-lg text-xs font-medium min-w-[58px] text-center transition-colors active:scale-95 ${
                             displayWeight != null ? 'bg-amber-500/10 text-amber-600/70' : 'bg-white/5 text-gray-600 border border-amber-500/10 border-dashed'
-                          }`}
-                        >
+                          }`}>
                           {displayWeight != null ? `${displayWeight}kg` : '—kg'}
                         </button>
                       )}
@@ -734,84 +782,100 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
             </>
           )}
 
-          {/* Working sets — rest timer shows below after rating */}
+          {/* Working sets */}
           {exercise.repScheme.map((reps, i) => {
             const setNum = i + 1
             const w = setWeights[setNum]
             const isEditing = editingWeightKey === setNum
             const currentRating = setRatings[setNum]
+            const repLog = repLogs[setNum]
+            const isFailure = repLog?.toFailure ?? false
+
             return (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-gray-500 text-xs w-7 shrink-0">S{setNum}</span>
-                <span className="text-gray-400 text-xs w-12 shrink-0">{reps}r</span>
-                <div className="flex-1 flex items-center gap-2 justify-end">
-                  {isEditing ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        autoFocus
-                        type="number"
-                        inputMode="decimal"
-                        value={inputVal}
-                        onChange={e => setInputVal(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={e => e.key === 'Enter' && commitEdit()}
-                        className="w-16 bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:ring-1 focus:ring-indigo-500"
-                        placeholder="0"
-                      />
-                      <span className="text-gray-400 text-xs">kg</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => startEditSet(i)}
-                      className={`px-2 py-1.5 rounded-lg text-sm font-medium min-w-[58px] text-center transition-colors active:scale-95 ${
-                        w ? 'bg-white/10 text-white' : 'bg-white/5 text-gray-500 border border-white/10 border-dashed'
-                      }`}
-                    >
-                      {w ? `${w}kg` : '—kg'}
-                    </button>
-                  )}
-                  <div className="flex gap-1">
-                    {RATING_CONFIG.map(({ key, label, active }) => (
-                      <button
-                        key={key}
-                        onClick={() => onRate(setNum, key)}
-                        className={`w-6 h-6 rounded-md text-[10px] font-bold transition-colors ${
-                          currentRating === key ? active : 'bg-white/5 text-gray-600 active:bg-white/10'
-                        }`}
-                      >
-                        {label}
+              <div key={i}>
+                {/* Main set row */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs w-7 shrink-0">S{setNum}</span>
+                  <span className="text-gray-400 text-xs w-12 shrink-0">{reps}r</span>
+                  <div className="flex-1 flex items-center gap-2 justify-end">
+                    {isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <input autoFocus type="number" inputMode="decimal" value={inputVal}
+                          onChange={e => setInputVal(e.target.value)} onBlur={commitEdit}
+                          onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                          className="w-16 bg-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="0" />
+                        <span className="text-gray-400 text-xs">kg</span>
+                      </div>
+                    ) : (
+                      <button onClick={() => startEditSet(i)}
+                        className={`px-2 py-1.5 rounded-lg text-sm font-medium min-w-[58px] text-center transition-colors active:scale-95 ${
+                          w ? 'bg-white/10 text-white' : 'bg-white/5 text-gray-500 border border-white/10 border-dashed'
+                        }`}>
+                        {w ? `${w}kg` : '—kg'}
                       </button>
-                    ))}
+                    )}
+                    <div className="flex gap-1">
+                      {RATING_CONFIG.map(({ key, label, active }) => (
+                        <button key={key} onClick={() => onRate(setNum, key)}
+                          className={`w-6 h-6 rounded-md text-[10px] font-bold transition-colors ${
+                            currentRating === key ? active : 'bg-white/5 text-gray-600 active:bg-white/10'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
+                {/* Reps + failure sub-row — appears once the set is rated */}
+                {currentRating && (
+                  <div className="ml-7 mt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={getRepValue(setNum)}
+                      onChange={e => setRepEdits(prev => ({ ...prev, [setNum]: e.target.value }))}
+                      onBlur={() => commitRep(setNum)}
+                      onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                      placeholder="reps"
+                      className="w-12 bg-white/5 rounded-lg px-1.5 py-1 text-[11px] text-white text-center outline-none focus:ring-1 focus:ring-white/20"
+                    />
+                    <span className="text-gray-600 text-[11px]">reps</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleFailure(setNum)}
+                      className={`text-[10px] px-2 py-1 rounded-lg transition-colors font-medium ${
+                        isFailure ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-gray-600'
+                      }`}
+                    >
+                      {isFailure ? '● fail' : '○ fail'}
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
 
           {restTimer && (
-            <RestTimerPill
-              timer={restTimer}
-              onSkip={onSkipTimer}
-              onAdd15={() => onAddTime(15)}
-            />
+            <RestTimerPill timer={restTimer} onSkip={onSkipTimer} onAdd15={() => onAddTime(15)} />
           )}
         </div>
 
+        {/* Progression banner */}
         {suggestion?.status === 'increase' ? (
           <div className="mt-3 px-3 py-2 bg-emerald-500/10 rounded-xl">
             <p className="text-emerald-400 text-xs font-medium">
-              ↑ Increase session — weights pre-filled above (+{suggestion.increase}kg per easy set)
+              ↑ {suggestion.reason} — +{suggestion.increase}kg pre-filled above
             </p>
           </div>
-        ) : suggestion?.status === 'review' ? (
+        ) : suggestion?.status === 'hold' || suggestion?.status === 'review' ? (
           <div className="mt-3 px-3 py-2 bg-amber-500/10 rounded-xl">
-            <p className="text-amber-400 text-xs font-medium">
-              Hold current weight — had hard sets last session
-            </p>
+            <p className="text-amber-400 text-xs font-medium">{suggestion.reason}</p>
           </div>
         ) : allWeightsLogged ? (
           <div className="mt-3 px-3 py-2 bg-white/5 rounded-xl">
-            <p className="text-gray-500 text-xs">Rate each set — E / ✓ / H — to track progression</p>
+            <p className="text-gray-500 text-xs">Rate each set · log reps · drives your progressive overload</p>
           </div>
         ) : null}
 
@@ -829,9 +893,11 @@ function ExerciseCard({ exercise, index, dayColor, setWeights, setRatings, sugge
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 function RestTimerPill({ timer, onSkip, onAdd15 }) {
   const { secondsLeft, totalSeconds, done } = timer
-  const pct = done ? 0 : (secondsLeft / totalSeconds) * 100
+  const pct  = done ? 0 : (secondsLeft / totalSeconds) * 100
   const mins = Math.floor(secondsLeft / 60)
   const secs = secondsLeft % 60
 
@@ -862,6 +928,8 @@ function RestTimerPill({ timer, onSkip, onAdd15 }) {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 function CommentModal({ exercise, existing, onSave, onClose }) {
   const [text, setText] = useState(existing)
   return (
@@ -870,10 +938,7 @@ function CommentModal({ exercise, existing, onSave, onClose }) {
       <div className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5">
         <h2 className="text-white font-bold mb-1">{exercise.name}</h2>
         <p className="text-gray-400 text-sm mb-4">Session note</p>
-        <textarea
-          autoFocus
-          value={text}
-          onChange={e => setText(e.target.value)}
+        <textarea autoFocus value={text} onChange={e => setText(e.target.value)}
           placeholder="e.g. Increased to 80kg, felt strong, shoulder fine..."
           rows={3}
           className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500 resize-none mb-4"
@@ -894,8 +959,7 @@ function HistoryModal({ exercise, onClose }) {
   useEffect(() => {
     async function load() {
       const { data, error } = await supabase
-        .from('exercise_weight_history')
-        .select('*')
+        .from('exercise_weight_history').select('*')
         .eq('exercise_id', exercise.id)
         .order('log_date', { ascending: true })
       if (error) console.error('fetchHistory error:', error.message)
@@ -953,12 +1017,12 @@ function HistoryModal({ exercise, onClose }) {
                       itemStyle={{ color: '#818cf8', fontSize: 12 }}
                       formatter={v => [`${v} kg`, 'Top set']}
                     />
-                    <Line type="monotone" dataKey="top" stroke="#818cf8" strokeWidth={2.5} dot={{ fill: '#818cf8', r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="top" stroke="#818cf8" strokeWidth={2.5}
+                      dot={{ fill: '#818cf8', r: 3 }} activeDot={{ r: 5 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             )}
-
             <div className="space-y-2">
               {[...history].reverse().map(h => (
                 <div key={h.id} className="bg-white/5 rounded-xl px-4 py-3">

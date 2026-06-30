@@ -3,7 +3,7 @@ export const WORKOUT_DAYS = [
     id: 'push',
     name: 'Push',
     color: '#6366f1',
-    totalSets: 12,
+    totalSets: 13,
     exercises: [
       {
         id: 'push_1',
@@ -24,7 +24,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'push_2',
         name: 'Pec Deck',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-15', '10-15'],
         restSeconds: 60,
         note: '',
@@ -40,8 +40,8 @@ export const WORKOUT_DAYS = [
       {
         id: 'push_5',
         name: 'Cable Bar Tricep Pushdown',
-        warmupSets: 1,
-        repScheme: ['10-14', '10-14'],
+        warmupSets: 0,
+        repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
         note: '',
       },
@@ -72,7 +72,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'pull_3',
         name: 'Cable Rear Delt Fly',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-12', '10-15'],
         restSeconds: 60,
         note: '',
@@ -80,7 +80,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'pull_4',
         name: 'Cable Bicep Curl',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
         note: '',
@@ -88,7 +88,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'pull_face',
         name: 'Face Pull',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['12-15', '12-15'],
         restSeconds: 60,
         note: 'Rear delt and shoulder health — cable at head height, rope attachment',
@@ -120,7 +120,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'legs_3',
         name: 'Standing Calf Raise Machine',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-14', '10-14'],
         restSeconds: 60,
         note: '',
@@ -128,7 +128,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'legs_2',
         name: 'Seated Hamstring Curl Machine',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-15', '10-15'],
         restSeconds: 60,
         note: '',
@@ -136,7 +136,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'legs_4',
         name: 'Cable Crunch (kneeling)',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['12-15', '12-15', '12-15'],
         restSeconds: 60,
         note: 'Core — done at end of session',
@@ -168,7 +168,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'ca_3',
         name: 'Dual Rope Pushdowns',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
         note: '',
@@ -176,7 +176,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'ca_2',
         name: 'Pec Deck',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-14', '10-14'],
         restSeconds: 60,
         note: '',
@@ -184,7 +184,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'ca_4',
         name: 'Cable Rope Bicep Curl',
-        warmupSets: 1,
+        warmupSets: 0,
         repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
         note: '',
