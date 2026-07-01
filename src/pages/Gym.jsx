@@ -16,6 +16,8 @@ export default function Gym() {
   const [ratings, setRatings] = useState({})
   const [repLogs, setRepLogs] = useState({})       // { [exId]: { [setNum]: { reps } } }
   const [progressionHints, setProgressionHints] = useState({})
+  const [histRatings, setHistRatings] = useState([])
+  const [histReps, setHistReps]       = useState([])
   const [saveToast, setSaveToast] = useState(null)
   const timerRef = useRef(null)
   const [restTimer, setRestTimer] = useState(null)
@@ -133,6 +135,10 @@ export default function Gym() {
       const liveRatings = allRatings.filter(r => validDates.has(r.log_date))
       const liveReps    = allReps.filter(r => validDates.has(r.log_date))
       setProgressionHints(computeProgression(liveRatings, histData, liveReps))
+      const prevRatings = liveRatings.filter(r => r.log_date !== todayStr)
+      const prevReps    = liveReps.filter(r => r.log_date !== todayStr)
+      setHistRatings(prevRatings)
+      setHistReps(prevReps)
     }
   }
 
@@ -328,8 +334,8 @@ export default function Gym() {
       }
     }
 
-    const nextWeights = computeNextWeights(day.exercises, exercises, todayRatings || [], todayRepsFlat)
-    const summary     = getProgressionSummary(day.exercises, exercises, todayRatings || [], todayRepsFlat)
+    const nextWeights = computeNextWeights(day.exercises, exercises, todayRatings || [], todayRepsFlat, histRatings, histReps)
+    const summary     = getProgressionSummary(day.exercises, exercises, todayRatings || [], todayRepsFlat, histRatings, histReps)
 
     await Promise.all(
       Object.entries(nextWeights).map(([exId, nextW]) =>
@@ -906,9 +912,13 @@ function ExerciseCard({
               ↑ {suggestion.reason} — +{suggestion.increase}kg pre-filled above
             </p>
           </div>
-        ) : suggestion?.status === 'hold' || suggestion?.status === 'review' ? (
+        ) : suggestion?.status === 'hold' ? (
           <div className="mt-3 px-3 py-2 bg-amber-500/10 rounded-xl">
             <p className="text-amber-400 text-xs font-medium">{suggestion.reason}</p>
+          </div>
+        ) : suggestion?.consecutiveTop === 1 ? (
+          <div className="mt-3 px-3 py-2 bg-indigo-500/10 rounded-xl border border-indigo-500/10">
+            <p className="text-indigo-400 text-xs font-medium">↗ 1/2 sessions at top of range — 1 more to trigger +{suggestion.increase}kg</p>
           </div>
         ) : allWeightsLogged ? (
           <div className="mt-3 px-3 py-2 bg-white/5 rounded-xl">

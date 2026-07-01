@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react'
-import { MEAL_PLAN, SUPPLEMENTS, MACRO_TARGETS } from '../data/mealPlan'
+import { MEAL_PLAN, SUPPLEMENTS, MACRO_TARGETS, SAUCE_PRESETS } from '../data/mealPlan'
 import { SHOPPING_LIST, COOK_GUIDES } from '../data/prepGuide'
 import { supabase } from '../lib/supabase'
 
-function computeConsumed(meals, ticks, eatOuts) {
+function computeConsumed(meals, ticks, eatOuts, sauceLogs = {}) {
   const eaten = meals.filter(m => ticks[m.id])
+  let sp = 0, sc = 0, sf = 0, scal = 0
+  eaten.forEach(m => {
+    const sauce = sauceLogs[m.id]
+    if (sauce) {
+      sp   += Number(sauce.protein)  || 0
+      sc   += Number(sauce.carbs)    || 0
+      sf   += Number(sauce.fat)      || 0
+      scal += Number(sauce.calories) || 0
+    }
+  })
   return {
-    protein:  eaten.reduce((s, m) => s + m.protein,  0) + eatOuts.reduce((s, e) => s + (Number(e.protein)  || 0), 0),
-    carbs:    eaten.reduce((s, m) => s + m.carbs,    0) + eatOuts.reduce((s, e) => s + (Number(e.carbs)    || 0), 0),
-    fat:      eaten.reduce((s, m) => s + m.fat,      0) + eatOuts.reduce((s, e) => s + (Number(e.fat)      || 0), 0),
-    calories: eaten.reduce((s, m) => s + m.calories, 0) + eatOuts.reduce((s, e) => s + (Number(e.calories) || 0), 0),
+    protein:  eaten.reduce((s, m) => s + m.protein,  0) + eatOuts.reduce((s, e) => s + (Number(e.protein)  || 0) + (Number(e.sauce?.protein)  || 0), 0) + sp,
+    carbs:    eaten.reduce((s, m) => s + m.carbs,    0) + eatOuts.reduce((s, e) => s + (Number(e.carbs)    || 0) + (Number(e.sauce?.carbs)    || 0), 0) + sc,
+    fat:      eaten.reduce((s, m) => s + m.fat,      0) + eatOuts.reduce((s, e) => s + (Number(e.fat)      || 0) + (Number(e.sauce?.fat)      || 0), 0) + sf,
+    calories: eaten.reduce((s, m) => s + m.calories, 0) + eatOuts.reduce((s, e) => s + (Number(e.calories) || 0) + (Number(e.sauce?.calories) || 0), 0) + scal,
   }
 }
 
@@ -33,6 +43,8 @@ export default function Diet() {
   // Daily meal log
   const [mealTicks, setMealTicks] = useState({})
   const [eatOuts, setEatOuts] = useState([])
+  const [sauceLogs, setSauceLogs] = useState({})
+  const [sauceModalMealId, setSauceModalMealId] = useState(null)
   const [eatOutModal, setEatOutModal] = useState(false)
   const [mealDaySaved, setMealDaySaved] = useState(null)
   const [mealHistory, setMealHistory] = useState([])
@@ -54,7 +66,7 @@ export default function Diet() {
   const [checked, setChecked] = useState({})
 
   const todayStr = new Date().toISOString().split('T')[0]
-  const consumed = computeConsumed(meals, mealTicks, eatOuts)
+  const consumed = computeConsumed(meals, mealTicks, eatOuts, sauceLogs)
 
   useEffect(() => {
     fetchSupplements()
@@ -100,6 +112,7 @@ export default function Diet() {
         ;(data.meals_eaten || []).forEach(id => { ticks[id] = true })
         setMealTicks(ticks)
         setEatOuts(data.eat_out || [])
+        setSauceLogs(data.sauce_logs || {})
       }
     } else {
       const yesterday = new Date()
@@ -130,11 +143,11 @@ export default function Diet() {
 
   // ── Meal log actions ─────────────────────────────────
 
-  async function upsertMealLog(ticks, eatOutsArr) {
+  async function upsertMealLog(ticks, eatOutsArr, sauceLs = {}) {
     const mealsEaten = Object.entries(ticks).filter(([, v]) => v).map(([k]) => Number(k))
-    const totals = computeConsumed(meals, ticks, eatOutsArr)
+    const totals = computeConsumed(meals, ticks, eatOutsArr, sauceLs)
     await supabase.from('meal_logs').upsert(
-      { log_date: todayStr, meals_eaten: mealsEaten, eat_out: eatOutsArr, ...totals, saved: false },
+      { log_date: todayStr, meals_eaten: mealsEaten, eat_out: eatOutsArr, sauce_logs: sauceLs, ...totals, saved: false },
       { onConflict: 'log_date' }
     )
   }
@@ -142,32 +155,46 @@ export default function Diet() {
   async function toggleMeal(mealId) {
     const updated = { ...mealTicks, [mealId]: !mealTicks[mealId] }
     setMealTicks(updated)
-    await upsertMealLog(updated, eatOuts)
+    await upsertMealLog(updated, eatOuts, sauceLogs)
   }
 
   async function addEatOut(entry) {
     const updated = [...eatOuts, entry]
     setEatOuts(updated)
-    await upsertMealLog(mealTicks, updated)
+    await upsertMealLog(mealTicks, updated, sauceLogs)
   }
 
   async function removeEatOut(idx) {
     const updated = eatOuts.filter((_, i) => i !== idx)
     setEatOuts(updated)
-    await upsertMealLog(mealTicks, updated)
+    await upsertMealLog(mealTicks, updated, sauceLogs)
+  }
+
+  async function addSauce(mealId, sauce) {
+    const updated = { ...sauceLogs, [mealId]: sauce }
+    setSauceLogs(updated)
+    await upsertMealLog(mealTicks, eatOuts, updated)
+  }
+
+  async function removeSauce(mealId) {
+    const updated = { ...sauceLogs }
+    delete updated[mealId]
+    setSauceLogs(updated)
+    await upsertMealLog(mealTicks, eatOuts, updated)
   }
 
   async function saveMealDay() {
     setMealDaySaved('saving')
     const mealsEaten = Object.entries(mealTicks).filter(([, v]) => v).map(([k]) => Number(k))
-    const totals = computeConsumed(meals, mealTicks, eatOuts)
+    const totals = computeConsumed(meals, mealTicks, eatOuts, sauceLogs)
     const { error } = await supabase.from('meal_logs').upsert(
-      { log_date: todayStr, meals_eaten: mealsEaten, eat_out: eatOuts, ...totals, saved: true },
+      { log_date: todayStr, meals_eaten: mealsEaten, eat_out: eatOuts, sauce_logs: sauceLogs, ...totals, saved: true },
       { onConflict: 'log_date' }
     )
     if (error) { alert('Save failed: ' + error.message); setMealDaySaved(null); return }
     setMealTicks({})
     setEatOuts([])
+    setSauceLogs({})
     await fetchMealHistory()
     setMealDaySaved('done')
     setTimeout(() => setMealDaySaved(null), 2500)
@@ -175,11 +202,11 @@ export default function Diet() {
 
   // ── Meal history edit/delete ─────────────────────────
 
-  async function updateMealHistory(logDate, updatedTicks, updatedEatOuts) {
+  async function updateMealHistory(logDate, updatedTicks, updatedEatOuts, existingSauceLogs = {}) {
     const mealsEaten = Object.entries(updatedTicks).filter(([, v]) => v).map(([k]) => Number(k))
-    const totals = computeConsumed(meals, updatedTicks, updatedEatOuts)
+    const totals = computeConsumed(meals, updatedTicks, updatedEatOuts, existingSauceLogs)
     const { error } = await supabase.from('meal_logs').upsert(
-      { log_date: logDate, meals_eaten: mealsEaten, eat_out: updatedEatOuts, ...totals, saved: true },
+      { log_date: logDate, meals_eaten: mealsEaten, eat_out: updatedEatOuts, sauce_logs: existingSauceLogs, ...totals, saved: true },
       { onConflict: 'log_date' }
     )
     if (error) { alert('Update failed: ' + error.message); return }
@@ -321,6 +348,9 @@ export default function Diet() {
                     isOverridden={overriddenIds.has(meal.id)}
                     onEdit={() => setEditingMeal(meal)}
                     onReset={() => resetMeal(meal.id)}
+                    sauce={sauceLogs[meal.id]}
+                    onOpenSaucePicker={() => setSauceModalMealId(meal.id)}
+                    onRemoveSauce={() => removeSauce(meal.id)}
                   />
                 ))}
               </div>
@@ -465,7 +495,7 @@ export default function Diet() {
         <MealHistoryEditModal
           log={editingMealHistory}
           meals={meals}
-          onSave={(ticks, eos) => updateMealHistory(editingMealHistory.log_date, ticks, eos)}
+          onSave={(ticks, eos) => updateMealHistory(editingMealHistory.log_date, ticks, eos, editingMealHistory.sauce_logs || {})}
           onDelete={async () => { await deleteMealHistory(editingMealHistory.log_date); setEditingMealHistory(null) }}
           onClose={() => setEditingMealHistory(null)}
         />
@@ -492,6 +522,12 @@ export default function Diet() {
           detail="This permanently removes this day's supplement log."
           onConfirm={() => deleteSuppHistory(deletingSuppEntry.log_date)}
           onCancel={() => setDeletingSuppEntry(null)}
+        />
+      )}
+      {sauceModalMealId != null && (
+        <SaucePickerModal
+          onAdd={sauce => { addSauce(sauceModalMealId, sauce); setSauceModalMealId(null) }}
+          onClose={() => setSauceModalMealId(null)}
         />
       )}
     </div>
@@ -563,8 +599,14 @@ function CloseIcon() {
 
 // ── Meal log card (today) ───────────────────────────────
 
-function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
+function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset, sauce, onOpenSaucePicker, onRemoveSauce }) {
   const [open, setOpen] = useState(false)
+
+  const displayCalories = meal.calories + (sauce?.calories || 0)
+  const displayProtein  = meal.protein  + (sauce?.protein  || 0)
+  const displayCarbs    = meal.carbs    + (sauce?.carbs    || 0)
+  const displayFat      = meal.fat      + (sauce?.fat      || 0)
+
   return (
     <div className={`bg-[#1e1e2a] rounded-2xl border overflow-hidden transition-colors ${
       ticked ? 'border-emerald-500/20' : 'border-white/5'
@@ -577,11 +619,14 @@ function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
           <span className="text-xl shrink-0">{meal.emoji}</span>
           <div className="min-w-0">
             <p className={`text-sm font-semibold ${ticked ? 'text-white' : 'text-gray-400'}`}>{meal.name}</p>
-            <p className="text-gray-500 text-xs">{meal.time} · {meal.calories} kcal</p>
+            <p className="text-gray-500 text-xs">
+              {meal.time} · {displayCalories} kcal
+              {sauce ? <span className="text-indigo-400"> · +sauce</span> : null}
+            </p>
           </div>
         </button>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-600 hidden sm:block">P{meal.protein} C{meal.carbs} F{meal.fat}</span>
+          <span className="text-xs text-gray-600 hidden sm:block">P{displayProtein} C{displayCarbs} F{displayFat}</span>
           <svg className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
             width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
             onClick={() => setOpen(o => !o)}>
@@ -593,9 +638,9 @@ function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
       {open && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3">
           <div className="flex gap-4 mb-3">
-            <MacroPill label="Protein" value={meal.protein} color="#6366f1" />
-            <MacroPill label="Carbs"   value={meal.carbs}   color="#10b981" />
-            <MacroPill label="Fat"     value={meal.fat}     color="#f59e0b" />
+            <MacroPill label="Protein" value={displayProtein} color="#6366f1" />
+            <MacroPill label="Carbs"   value={displayCarbs}   color="#10b981" />
+            <MacroPill label="Fat"     value={displayFat}     color="#f59e0b" />
           </div>
           <div className="space-y-1.5 mb-3">
             {meal.foods.map((food, i) => (
@@ -605,6 +650,34 @@ function MealLogCard({ meal, ticked, onTick, isOverridden, onEdit, onReset }) {
               </div>
             ))}
           </div>
+
+          {/* Sauce section */}
+          <div className="mb-3">
+            {sauce ? (
+              <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{sauce.emoji || '🥄'}</span>
+                  <div>
+                    <p className="text-indigo-300 text-xs font-medium">{sauce.name}</p>
+                    <p className="text-gray-500 text-[10px]">{sauce.serving || 'custom'} · {sauce.calories} kcal · P{sauce.protein} C{sauce.carbs} F{sauce.fat}g</p>
+                  </div>
+                </div>
+                <button onClick={onRemoveSauce} className="text-gray-500 active:text-gray-300 p-1 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onOpenSaucePicker}
+                className="w-full py-2 rounded-xl bg-white/5 text-indigo-400 text-xs font-medium active:bg-white/10 border border-indigo-500/20"
+              >
+                + Add sauce
+              </button>
+            )}
+          </div>
+
           <button onClick={onEdit} className="w-full py-2 rounded-xl bg-white/5 text-indigo-400 text-sm font-medium active:bg-white/10">
             Edit foods
           </button>
@@ -640,6 +713,11 @@ function EatOutEntry({ entry, onRemove }) {
         <span>F <span className="text-white">{entry.fat}g</span></span>
         <span className="text-gray-300">{entry.calories} kcal</span>
       </div>
+      {entry.sauce && (
+        <p className="text-indigo-400 text-[10px] mt-1">
+          {entry.sauce.emoji || '🥄'} {entry.sauce.name} +{entry.sauce.calories} kcal
+        </p>
+      )}
     </div>
   )
 }
@@ -651,6 +729,7 @@ function MealHistoryCard({ log, onEdit, onDelete }) {
   const dateStr = fmtDate(log.log_date)
   const mealsEaten = log.meals_eaten || []
   const eatOuts = log.eat_out || []
+  const savedSauces = log.sauce_logs || {}
 
   const CAL_THRESH  = MACRO_TARGETS.calories * 0.2
   const PROT_THRESH = MACRO_TARGETS.protein  * 0.2
@@ -681,23 +760,13 @@ function MealHistoryCard({ log, onEdit, onDelete }) {
           )}
         </button>
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={e => { e.stopPropagation(); onEdit() }}
-            className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1"
-          >
-            Edit
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); onDelete() }}
-            className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1"
-          >
-            Delete
-          </button>
-          <svg
-            onClick={() => setOpen(o => !o)}
+          <button onClick={e => { e.stopPropagation(); onEdit() }}
+            className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1">Edit</button>
+          <button onClick={e => { e.stopPropagation(); onDelete() }}
+            className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1">Delete</button>
+          <svg onClick={() => setOpen(o => !o)}
             className={`text-gray-500 transition-transform cursor-pointer ${open ? 'rotate-180' : ''}`}
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-          >
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -707,19 +776,34 @@ function MealHistoryCard({ log, onEdit, onDelete }) {
         <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
           {MEAL_PLAN.map(m => {
             const eaten = mealsEaten.includes(m.id)
+            const sauce = savedSauces[m.id]
             return (
-              <div key={m.id} className="flex items-center gap-2">
-                <span className={`text-sm ${eaten ? 'text-emerald-400' : 'text-gray-600'}`}>{eaten ? '✓' : '✗'}</span>
-                <span className={`text-sm ${eaten ? 'text-gray-300' : 'text-gray-600'}`}>{m.emoji} {m.name}</span>
-                {eaten && <span className="text-gray-500 text-xs ml-auto">{m.calories} kcal</span>}
+              <div key={m.id}>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm ${eaten ? 'text-emerald-400' : 'text-gray-600'}`}>{eaten ? '✓' : '✗'}</span>
+                  <span className={`text-sm ${eaten ? 'text-gray-300' : 'text-gray-600'}`}>{m.emoji} {m.name}</span>
+                  {eaten && <span className="text-gray-500 text-xs ml-auto">{m.calories} kcal</span>}
+                </div>
+                {eaten && sauce && (
+                  <p className="ml-5 text-indigo-400 text-[10px] mt-0.5">
+                    {sauce.emoji || '🥄'} {sauce.name} +{sauce.calories} kcal
+                  </p>
+                )}
               </div>
             )
           })}
           {eatOuts.map((e, i) => (
-            <div key={`eo${i}`} className="flex items-center gap-2">
-              <span className="text-sm text-amber-400">✓</span>
-              <span className="text-sm text-amber-300">🍴 {e.name || 'Eat out'}</span>
-              <span className="text-gray-500 text-xs ml-auto">{e.calories} kcal</span>
+            <div key={`eo${i}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-amber-400">✓</span>
+                <span className="text-sm text-amber-300">🍴 {e.name || 'Eat out'}</span>
+                <span className="text-gray-500 text-xs ml-auto">{e.calories} kcal</span>
+              </div>
+              {e.sauce && (
+                <p className="ml-5 text-indigo-400 text-[10px] mt-0.5">
+                  {e.sauce.emoji || '🥄'} {e.sauce.name} +{e.sauce.calories} kcal
+                </p>
+              )}
             </div>
           ))}
           <div className="mt-3 pt-3 border-t border-white/5 flex gap-3 text-xs">
@@ -738,7 +822,6 @@ function MealHistoryCard({ log, onEdit, onDelete }) {
 // ── Meal history edit modal ─────────────────────────────
 
 function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
-  // Use String() keys explicitly to avoid any number/string coercion mismatch
   const [ticks, setTicks] = useState(() => {
     const t = {}
     ;(log.meals_eaten || []).forEach(id => { t[String(id)] = true })
@@ -750,84 +833,48 @@ function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  // Recompute live on every render — updates when ticks or eatOuts change
-  const consumed = computeConsumed(meals, ticks, localEatOuts)
+  const consumed = computeConsumed(meals, ticks, localEatOuts, log.sauce_logs || {})
 
   function toggleTick(mealId) {
     const key = String(mealId)
     setTicks(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  function addEatOut(entry) {
-    setLocalEatOuts(prev => [...prev, entry])
-    setShowEatOutForm(false)
-  }
+  function addEatOut(entry) { setLocalEatOuts(prev => [...prev, entry]); setShowEatOutForm(false) }
+  function removeEatOut(idx) { setLocalEatOuts(prev => prev.filter((_, i) => i !== idx)) }
 
-  function removeEatOut(idx) {
-    setLocalEatOuts(prev => prev.filter((_, i) => i !== idx))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    await onSave(ticks, localEatOuts)
-    setSaving(false)
-  }
-
-  async function handleDelete() {
-    setDeleting(true)
-    await onDelete()
-    setDeleting(false)
-  }
+  async function handleSave() { setSaving(true); await onSave(ticks, localEatOuts); setSaving(false) }
+  async function handleDelete() { setDeleting(true); await onDelete(); setDeleting(false) }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end">
-      {/* Backdrop — sits behind the panel (z-0) so it never intercepts panel clicks */}
       <div className="absolute inset-0 bg-black/70 z-0" onClick={onClose} />
-
-      {/* Panel — explicit z-10 ensures it is always above the backdrop */}
       <div className="relative z-10 w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl max-h-[92vh] flex flex-col">
 
-        {/* Inline delete-confirm overlay — covers just the panel */}
         {confirmDelete && (
           <div className="absolute inset-0 z-20 bg-[#1a1a24]/95 rounded-t-3xl flex flex-col justify-end p-6">
             <p className="text-white font-bold text-lg mb-1">Delete this day?</p>
-            <p className="text-gray-400 text-sm mb-6">
-              Permanently removes the meal log for {fmtDate(log.log_date)}.
-            </p>
+            <p className="text-gray-400 text-sm mb-6">Permanently removes the meal log for {fmtDate(log.log_date)}.</p>
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
-              >
+              <button type="button" onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10">Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleting}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50">
                 {deleting ? 'Deleting...' : 'Yes, delete'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5 shrink-0">
           <div>
             <h2 className="text-white font-bold text-lg">Edit day</h2>
             <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1">
-            <CloseIcon />
-          </button>
+          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1"><CloseIcon /></button>
         </div>
 
-        {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
-          {/* Live macro summary */}
           <div className="bg-[#16161f] rounded-2xl p-4 border border-white/5">
             <div className="flex justify-between items-center mb-2">
               <p className="text-gray-400 text-xs font-medium uppercase tracking-widest">Macros</p>
@@ -840,17 +887,12 @@ function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
             <MacroProgressBar label="Fat"     consumed={consumed.fat}     target={MACRO_TARGETS.fat}     color="#f59e0b" />
           </div>
 
-          {/* Meal toggles */}
           <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
             {meals.map((meal, i) => (
-              <button
-                type="button"
-                key={meal.id}
-                onClick={() => toggleTick(meal.id)}
+              <button type="button" key={meal.id} onClick={() => toggleTick(meal.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-white/5 ${
                   i < meals.length - 1 ? 'border-b border-white/5' : ''
-                }`}
-              >
+                }`}>
                 <CheckCircle checked={!!ticks[String(meal.id)]} />
                 <span className="text-xl shrink-0">{meal.emoji}</span>
                 <div className="flex-1 min-w-0">
@@ -861,7 +903,6 @@ function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
             ))}
           </div>
 
-          {/* Eat-out entries */}
           {localEatOuts.length > 0 && (
             <div className="space-y-2">
               {localEatOuts.map((entry, i) => (
@@ -870,35 +911,23 @@ function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
             </div>
           )}
 
-          {/* Inline eat-out form */}
           {showEatOutForm ? (
             <InlineEatOutForm onAdd={addEatOut} onCancel={() => setShowEatOutForm(false)} />
           ) : (
-            <button
-              type="button"
-              onClick={() => setShowEatOutForm(true)}
-              className="w-full py-3 rounded-2xl bg-white/5 text-amber-400 text-sm font-medium active:bg-white/10 border border-amber-500/20"
-            >
+            <button type="button" onClick={() => setShowEatOutForm(true)}
+              className="w-full py-3 rounded-2xl bg-white/5 text-amber-400 text-sm font-medium active:bg-white/10 border border-amber-500/20">
               + Add eat-out entry
             </button>
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-5 pb-6 pt-3 border-t border-white/5 shrink-0 space-y-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
-          >
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50">
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20"
-          >
+          <button type="button" onClick={() => setConfirmDelete(true)}
+            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20">
             Delete this day
           </button>
         </div>
@@ -907,7 +936,7 @@ function MealHistoryEditModal({ log, meals, onSave, onDelete, onClose }) {
   )
 }
 
-// ── Inline eat-out form (used inside history edit modal) ─
+// ── Inline eat-out form ─────────────────────────────────
 
 function InlineEatOutForm({ onAdd, onCancel }) {
   const [name, setName] = useState('')
@@ -915,6 +944,8 @@ function InlineEatOutForm({ onAdd, onCancel }) {
   const [carbs, setCarbs] = useState('')
   const [fat, setFat] = useState('')
   const [calories, setCalories] = useState('')
+  const [sauce, setSauce] = useState(null)
+  const [saucePickerOpen, setSaucePickerOpen] = useState(false)
 
   function handleAdd() {
     onAdd({
@@ -923,6 +954,7 @@ function InlineEatOutForm({ onAdd, onCancel }) {
       carbs: Number(carbs) || 0,
       fat: Number(fat) || 0,
       calories: Number(calories) || 0,
+      ...(sauce ? { sauce } : {}),
     })
   }
 
@@ -931,12 +963,8 @@ function InlineEatOutForm({ onAdd, onCancel }) {
   return (
     <div className="bg-[#1e1e2a] rounded-2xl border border-amber-500/20 p-4">
       <p className="text-amber-300 text-xs font-semibold mb-3 uppercase tracking-widest">Eat-out entry</p>
-      <input
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Meal name (optional)"
-        className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500 mb-3"
-      />
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Meal name (optional)"
+        className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500 mb-3" />
       <div className="grid grid-cols-2 gap-2 mb-3">
         {[
           { label: 'Protein (g)', val: protein, set: setProtein },
@@ -946,24 +974,30 @@ function InlineEatOutForm({ onAdd, onCancel }) {
         ].map(({ label, val, set }) => (
           <div key={label}>
             <p className="text-gray-500 text-xs mb-1">{label}</p>
-            <input
-              type="number"
-              inputMode="numeric"
-              value={val}
-              onChange={e => set(e.target.value)}
-              placeholder="0"
-              className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500"
-            />
+            <input type="number" inputMode="numeric" value={val} onChange={e => set(e.target.value)} placeholder="0"
+              className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-amber-500" />
           </div>
         ))}
       </div>
+      {sauce ? (
+        <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2 mb-3">
+          <p className="text-indigo-300 text-xs">{sauce.emoji || '🥄'} {sauce.name} +{sauce.calories} kcal</p>
+          <button onClick={() => setSauce(null)} className="text-gray-500 active:text-gray-300 text-xs ml-2">✕</button>
+        </div>
+      ) : (
+        <button onClick={() => setSaucePickerOpen(true)}
+          className="w-full py-2 rounded-xl bg-white/5 text-indigo-400 text-xs font-medium active:bg-white/10 border border-indigo-500/20 mb-3">
+          + Add sauce
+        </button>
+      )}
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 text-sm font-medium">Cancel</button>
         <button onClick={handleAdd} disabled={!hasAny}
-          className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40">
-          Add
-        </button>
+          className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold disabled:opacity-40">Add</button>
       </div>
+      {saucePickerOpen && (
+        <SaucePickerModal onAdd={s => { setSauce(s); setSaucePickerOpen(false) }} onClose={() => setSaucePickerOpen(false)} />
+      )}
     </div>
   )
 }
@@ -986,28 +1020,15 @@ function SuppHistoryCard({ log, onEdit, onDelete }) {
           </p>
         </button>
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={e => { e.stopPropagation(); onEdit() }}
-            className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1"
-          >
-            Edit
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); onDelete() }}
-            className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1"
-          >
-            Delete
-          </button>
-          <svg
-            onClick={() => setOpen(o => !o)}
+          <button onClick={e => { e.stopPropagation(); onEdit() }} className="text-indigo-400 text-xs font-medium active:text-indigo-300 px-1 py-1">Edit</button>
+          <button onClick={e => { e.stopPropagation(); onDelete() }} className="text-red-400 text-xs font-medium active:text-red-300 px-1 py-1">Delete</button>
+          <svg onClick={() => setOpen(o => !o)}
             className={`text-gray-500 transition-transform cursor-pointer ${open ? 'rotate-180' : ''}`}
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-          >
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
       </div>
-
       {open && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
           {SUPPLEMENTS.map(s => {
@@ -1035,73 +1056,41 @@ function SuppHistoryEditModal({ log, onSave, onDelete, onClose }) {
   const [deleting, setDeleting] = useState(false)
   const takenCount = SUPPLEMENTS.filter(s => supps[s.id]).length
 
-  async function handleSave() {
-    setSaving(true)
-    await onSave(supps)
-    setSaving(false)
-  }
-
-  async function handleDelete() {
-    setDeleting(true)
-    await onDelete()
-    setDeleting(false)
-  }
+  async function handleSave() { setSaving(true); await onSave(supps); setSaving(false) }
+  async function handleDelete() { setDeleting(true); await onDelete(); setDeleting(false) }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end">
-      {/* Backdrop behind panel */}
       <div className="absolute inset-0 bg-black/70 z-0" onClick={onClose} />
-
-      {/* Panel — z-10 keeps it above the backdrop */}
       <div className="relative z-10 w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl p-5">
-
-        {/* Inline delete-confirm overlay */}
         {confirmDelete && (
           <div className="absolute inset-0 z-20 bg-[#1a1a24]/95 rounded-t-3xl flex flex-col justify-end p-6">
             <p className="text-white font-bold text-lg mb-1">Delete this day?</p>
-            <p className="text-gray-400 text-sm mb-6">
-              Permanently removes the supplement log for {fmtDate(log.log_date)}.
-            </p>
+            <p className="text-gray-400 text-sm mb-6">Permanently removes the supplement log for {fmtDate(log.log_date)}.</p>
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
-              >
+              <button type="button" onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10">Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleting}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50">
                 {deleting ? 'Deleting...' : 'Yes, delete'}
               </button>
             </div>
           </div>
         )}
-
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-white font-bold text-lg">Edit supplements</h2>
             <p className="text-gray-400 text-sm">{fmtDate(log.log_date)}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1">
-            <CloseIcon />
-          </button>
+          <button type="button" onClick={onClose} className="text-gray-400 active:text-white p-1"><CloseIcon /></button>
         </div>
-
         <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden mb-3">
           {SUPPLEMENTS.map((supp, i) => (
-            <button
-              type="button"
-              key={supp.id}
+            <button type="button" key={supp.id}
               onClick={() => setSupps(prev => ({ ...prev, [supp.id]: !prev[supp.id] }))}
               className={`w-full flex items-center justify-between px-4 py-3.5 transition-colors active:bg-white/5 ${
                 i < SUPPLEMENTS.length - 1 ? 'border-b border-white/5' : ''
-              }`}
-            >
+              }`}>
               <div className="flex items-center gap-3 text-left">
                 <span className="text-lg">{supp.icon}</span>
                 <div>
@@ -1113,23 +1102,14 @@ function SuppHistoryEditModal({ log, onSave, onDelete, onClose }) {
             </button>
           ))}
         </div>
-
         <p className="text-center text-gray-500 text-xs mb-4">{takenCount}/{SUPPLEMENTS.length} taken</p>
-
         <div className="space-y-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50"
-          >
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="w-full py-3.5 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600 disabled:opacity-50">
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20"
-          >
+          <button type="button" onClick={() => setConfirmDelete(true)}
+            className="w-full py-3 rounded-2xl bg-white/5 text-red-400 text-sm font-medium active:bg-white/10 border border-red-500/20">
             Delete this day
           </button>
         </div>
@@ -1142,13 +1122,7 @@ function SuppHistoryEditModal({ log, onSave, onDelete, onClose }) {
 
 function ConfirmModal({ message, detail, onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false)
-
-  async function handleConfirm() {
-    setBusy(true)
-    await onConfirm()
-    setBusy(false)
-  }
-
+  async function handleConfirm() { setBusy(true); await onConfirm(); setBusy(false) }
   return (
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
@@ -1156,17 +1130,9 @@ function ConfirmModal({ message, detail, onConfirm, onCancel }) {
         <p className="text-white font-bold text-lg mb-1">{message}</p>
         {detail && <p className="text-gray-400 text-sm mb-6">{detail}</p>}
         <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={busy}
-            className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50"
-          >
+          <button onClick={onCancel} className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm active:bg-white/10">Cancel</button>
+          <button onClick={handleConfirm} disabled={busy}
+            className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm active:bg-red-600 disabled:opacity-50">
             {busy ? 'Deleting...' : 'Delete'}
           </button>
         </div>
@@ -1175,7 +1141,7 @@ function ConfirmModal({ message, detail, onConfirm, onCancel }) {
   )
 }
 
-// ── Eat-out modal (for today's log) ────────────────────
+// ── Eat-out modal ───────────────────────────────────────
 
 function EatOutModal({ onSave, onClose }) {
   const [name, setName] = useState('')
@@ -1183,6 +1149,8 @@ function EatOutModal({ onSave, onClose }) {
   const [carbs, setCarbs] = useState('')
   const [fat, setFat] = useState('')
   const [calories, setCalories] = useState('')
+  const [sauce, setSauce] = useState(null)
+  const [saucePickerOpen, setSaucePickerOpen] = useState(false)
 
   function handleSave() {
     onSave({
@@ -1191,6 +1159,7 @@ function EatOutModal({ onSave, onClose }) {
       carbs: Number(carbs) || 0,
       fat: Number(fat) || 0,
       calories: Number(calories) || 0,
+      ...(sauce ? { sauce } : {}),
     })
     onClose()
   }
@@ -1206,16 +1175,12 @@ function EatOutModal({ onSave, onClose }) {
 
         <div className="mb-4">
           <p className="text-gray-400 text-xs mb-1.5">Meal name (optional)</p>
-          <input
-            autoFocus
-            value={name}
-            onChange={e => setName(e.target.value)}
+          <input autoFocus value={name} onChange={e => setName(e.target.value)}
             placeholder="e.g. Chicken burger at Grill'd"
-            className="w-full bg-white/5 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500"
-          />
+            className="w-full bg-white/5 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             { label: 'Protein (g)', val: protein, set: setProtein },
             { label: 'Carbs (g)',   val: carbs,   set: setCarbs },
@@ -1224,27 +1189,125 @@ function EatOutModal({ onSave, onClose }) {
           ].map(({ label, val, set }) => (
             <div key={label}>
               <p className="text-gray-400 text-xs mb-1.5">{label}</p>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={val}
-                onChange={e => set(e.target.value)}
-                placeholder="0"
-                className="w-full bg-white/5 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500"
-              />
+              <input type="number" inputMode="numeric" value={val} onChange={e => set(e.target.value)} placeholder="0"
+                className="w-full bg-white/5 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500" />
             </div>
           ))}
         </div>
 
+        {sauce ? (
+          <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base">{sauce.emoji || '🥄'}</span>
+              <p className="text-indigo-300 text-xs font-medium">{sauce.name} · {sauce.calories} kcal</p>
+            </div>
+            <button onClick={() => setSauce(null)} className="text-gray-500 active:text-gray-300 text-sm ml-2">✕</button>
+          </div>
+        ) : (
+          <button onClick={() => setSaucePickerOpen(true)}
+            className="w-full py-2.5 rounded-xl bg-white/5 text-indigo-400 text-sm font-medium active:bg-white/10 border border-indigo-500/20 mb-4">
+            + Add sauce
+          </button>
+        )}
+
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm">Cancel</button>
-          <button
-            onClick={handleSave}
-            disabled={!hasAny}
-            className="flex-1 py-3 rounded-2xl bg-amber-500 text-white font-semibold text-sm active:bg-amber-600 disabled:opacity-40"
-          >
+          <button onClick={handleSave} disabled={!hasAny}
+            className="flex-1 py-3 rounded-2xl bg-amber-500 text-white font-semibold text-sm active:bg-amber-600 disabled:opacity-40">
             Add to today
           </button>
+        </div>
+
+        {saucePickerOpen && (
+          <SaucePickerModal onAdd={s => { setSauce(s); setSaucePickerOpen(false) }} onClose={() => setSaucePickerOpen(false)} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Sauce picker modal ──────────────────────────────────
+
+function SaucePickerModal({ onAdd, onClose }) {
+  const [showCustom, setShowCustom] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [customP, setCustomP] = useState('')
+  const [customC, setCustomC] = useState('')
+  const [customF, setCustomF] = useState('')
+  const [customCal, setCustomCal] = useState('')
+
+  function addCustom() {
+    onAdd({
+      id: 'custom',
+      name: customName.trim() || 'Custom sauce',
+      emoji: '🥄',
+      serving: 'custom',
+      protein: Number(customP) || 0,
+      carbs: Number(customC) || 0,
+      fat: Number(customF) || 0,
+      calories: Number(customCal) || 0,
+    })
+  }
+
+  const customHasAny = customP || customC || customF || customCal
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-lg mx-auto bg-[#1a1a24] rounded-t-3xl max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5 sticky top-0 bg-[#1a1a24]">
+          <h3 className="text-white font-bold text-lg">Add a sauce</h3>
+          <button onClick={onClose} className="text-gray-400 active:text-white p-1"><CloseIcon /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="bg-[#16161f] rounded-2xl border border-white/5 overflow-hidden">
+            {SAUCE_PRESETS.map((s, i) => (
+              <button key={s.id} onClick={() => onAdd(s)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-white/5 ${
+                  i < SAUCE_PRESETS.length - 1 ? 'border-b border-white/5' : ''
+                }`}>
+                <span className="text-xl shrink-0">{s.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium">{s.name}</p>
+                  <p className="text-gray-500 text-xs">{s.serving} · {s.calories} kcal · P{s.protein} C{s.carbs} F{s.fat}g</p>
+                </div>
+                <svg className="text-gray-600 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            ))}
+          </div>
+
+          {!showCustom ? (
+            <button onClick={() => setShowCustom(true)}
+              className="w-full py-3 rounded-2xl bg-white/5 text-gray-400 text-sm font-medium active:bg-white/10 border border-white/10">
+              + Enter custom sauce
+            </button>
+          ) : (
+            <div className="bg-[#16161f] rounded-2xl border border-white/5 p-4">
+              <p className="text-white text-sm font-semibold mb-3">Custom sauce</p>
+              <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Sauce name"
+                className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500 mb-3" />
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { label: 'Protein (g)', val: customP,   set: setCustomP },
+                  { label: 'Carbs (g)',   val: customC,   set: setCustomC },
+                  { label: 'Fat (g)',     val: customF,   set: setCustomF },
+                  { label: 'Calories',   val: customCal, set: setCustomCal },
+                ].map(({ label, val, set }) => (
+                  <div key={label}>
+                    <p className="text-gray-500 text-xs mb-1">{label}</p>
+                    <input type="number" inputMode="numeric" value={val} onChange={e => set(e.target.value)} placeholder="0"
+                      className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
+                ))}
+              </div>
+              <button onClick={addCustom} disabled={!customHasAny}
+                className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600 disabled:opacity-40">
+                Add custom sauce
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1264,10 +1327,8 @@ function PrepTab() {
 
       {COOK_GUIDES.map(guide => (
         <div key={guide.id} className="bg-[#1e1e2a] rounded-2xl border border-white/5 overflow-hidden">
-          <button
-            onClick={() => setOpen(open === guide.id ? null : guide.id)}
-            className="w-full flex items-center justify-between px-4 py-4 text-left"
-          >
+          <button onClick={() => setOpen(open === guide.id ? null : guide.id)}
+            className="w-full flex items-center justify-between px-4 py-4 text-left">
             <div className="flex items-center gap-3">
               <span className="text-2xl">{guide.emoji}</span>
               <div>
@@ -1342,13 +1403,10 @@ function ShopTab({ checked, setChecked }) {
                 const key = `${cat.category}-${i}`
                 const done = checked[key]
                 return (
-                  <button
-                    key={i}
-                    onClick={() => toggle(key)}
+                  <button key={i} onClick={() => toggle(key)}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-white/5 ${
                       i < cat.items.length - 1 ? 'border-b border-white/5' : ''
-                    }`}
-                  >
+                    }`}>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                       done ? 'bg-emerald-500 border-emerald-500' : 'border-gray-600'
                     }`}>
@@ -1377,10 +1435,8 @@ function ShopTab({ checked, setChecked }) {
         ))}
       </div>
 
-      <button
-        onClick={() => setChecked({})}
-        className="w-full mt-5 py-3 rounded-2xl bg-white/5 text-gray-400 text-sm font-medium active:bg-white/10"
-      >
+      <button onClick={() => setChecked({})}
+        className="w-full mt-5 py-3 rounded-2xl bg-white/5 text-gray-400 text-sm font-medium active:bg-white/10">
         Reset list
       </button>
     </div>
@@ -1411,9 +1467,7 @@ function MealEditModal({ meal, onSave, onClose, saving }) {
       <div className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-white font-bold text-lg">Edit — {meal.name}</h2>
-          <button onClick={onClose} className="text-gray-400">
-            <CloseIcon />
-          </button>
+          <button onClick={onClose} className="text-gray-400"><CloseIcon /></button>
         </div>
         <div className="space-y-3 mb-4">
           {foods.map((food, i) => (
