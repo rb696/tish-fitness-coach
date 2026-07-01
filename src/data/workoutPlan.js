@@ -65,7 +65,7 @@ export const WORKOUT_DAYS = [
         id: 'pull_2',
         name: 'Single Arm Cable Row',
         warmupSets: 1,
-        repScheme: ['8-12', '8-12'],
+        repScheme: ['8-12', '8-12', '8-12'],
         restSeconds: 90,
         note: '',
       },
@@ -79,11 +79,11 @@ export const WORKOUT_DAYS = [
       },
       {
         id: 'pull_4',
-        name: 'Cable Bicep Curl',
+        name: 'Single Arm Cable Curl',
         warmupSets: 0,
         repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
-        note: '',
+        note: 'D-handle · fully supinate wrist at the top of each rep',
       },
       {
         id: 'pull_face',
