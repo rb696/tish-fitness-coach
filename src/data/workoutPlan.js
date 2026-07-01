@@ -63,8 +63,8 @@ export const WORKOUT_DAYS = [
       },
       {
         id: 'pull_2',
-        name: 'Dual Cable Row',
-        warmupSets: 2,
+        name: 'Single Arm Cable Row',
+        warmupSets: 1,
         repScheme: ['8-12', '8-12'],
         restSeconds: 90,
         note: '',
