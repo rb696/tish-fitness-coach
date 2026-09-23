@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Diet from './pages/Diet'
 import Gym from './pages/Gym'
 import Weight from './pages/Weight'
+import CheckIn from './pages/CheckIn'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/diet" element={<Diet />} />
           <Route path="/gym" element={<Gym />} />
           <Route path="/weight" element={<Weight />} />
+          <Route path="/checkin" element={<CheckIn />} />
         </Routes>
         <BottomNav />
       </div>
