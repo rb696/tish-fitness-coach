@@ -3,7 +3,7 @@ export const WORKOUT_DAYS = [
     id: 'push',
     name: 'Push',
     color: '#6366f1',
-    totalSets: 13,
+    totalSets: 14,
     exercises: [
       {
         id: 'push_1',
@@ -32,8 +32,8 @@ export const WORKOUT_DAYS = [
       {
         id: 'push_4',
         name: 'Cable Lateral Raise',
-        warmupSets: 1,
-        repScheme: ['12-15', '12-15'],
+        warmupSets: 0,
+        repScheme: ['12-15', '12-15', '12-15'],
         restSeconds: 60,
         note: 'Low pulley, light weight, strict form',
       },
