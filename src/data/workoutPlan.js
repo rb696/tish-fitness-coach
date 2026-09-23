@@ -3,7 +3,7 @@ export const WORKOUT_DAYS = [
     id: 'push',
     name: 'Push',
     color: '#6366f1',
-    totalSets: 13,
+    totalSets: 16,
     exercises: [
       {
         id: 'push_1',
@@ -20,6 +20,14 @@ export const WORKOUT_DAYS = [
         repScheme: ['8-12', '8-12', '8-12'],
         restSeconds: 90,
         note: 'Fixed path only — replaces Arnold Press for shoulder safety',
+      },
+      {
+        id: 'push_db_ohp',
+        name: 'Dumbbell Overhead Press',
+        warmupSets: 1,
+        repScheme: ['8-12', '8-12', '8-12'],
+        restSeconds: 90,
+        note: '',
       },
       {
         id: 'push_2',
@@ -51,7 +59,7 @@ export const WORKOUT_DAYS = [
     id: 'pull',
     name: 'Pull',
     color: '#10b981',
-    totalSets: 12,
+    totalSets: 15,
     exercises: [
       {
         id: 'pull_1',
@@ -93,13 +101,21 @@ export const WORKOUT_DAYS = [
         restSeconds: 60,
         note: 'Rear delt and shoulder health — cable at head height, rope attachment',
       },
+      {
+        id: 'pull_tricep',
+        name: 'Cable Overhead Rope Tricep Extension',
+        warmupSets: 0,
+        repScheme: ['10-14', '10-14', '10-14'],
+        restSeconds: 60,
+        note: 'Controlled ROM only — do not force the overhead stretch. Test light before loading.',
+      },
     ],
   },
   {
     id: 'legs',
     name: 'Core & Legs',
     color: '#f59e0b',
-    totalSets: 13,
+    totalSets: 16,
     exercises: [
       {
         id: 'legs_1',
@@ -108,6 +124,14 @@ export const WORKOUT_DAYS = [
         repScheme: ['8-10', '8-10', '8-10'],
         restSeconds: 120,
         note: '',
+      },
+      {
+        id: 'legs_ext',
+        name: 'Leg Extension',
+        warmupSets: 0,
+        repScheme: ['10-15', '10-15', '10-15'],
+        restSeconds: 60,
+        note: 'Quad isolation — full extension, squeeze at top',
       },
       {
         id: 'legs_rdl',
@@ -147,7 +171,7 @@ export const WORKOUT_DAYS = [
     id: 'chest_arms',
     name: 'Chest & Arms',
     color: '#ef4444',
-    totalSets: 14,
+    totalSets: 17,
     exercises: [
       {
         id: 'ca_row',
@@ -180,6 +204,14 @@ export const WORKOUT_DAYS = [
         repScheme: ['10-14', '10-14'],
         restSeconds: 60,
         note: '',
+      },
+      {
+        id: 'ca_lat',
+        name: 'Cable Lateral Raise',
+        warmupSets: 0,
+        repScheme: ['12-15', '12-15', '12-15'],
+        restSeconds: 60,
+        note: 'Low pulley, light weight, strict form',
       },
       {
         id: 'ca_4',
