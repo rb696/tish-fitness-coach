@@ -183,7 +183,7 @@ export const WORKOUT_DAYS = [
       },
       {
         id: 'ca_3',
-        name: 'Dual Rope Pushdowns',
+        name: 'Tricep Rope Pushdown',
         warmupSets: 0,
         repScheme: ['10-14', '10-14', '10-14'],
         restSeconds: 60,
