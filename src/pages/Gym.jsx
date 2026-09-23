@@ -19,6 +19,7 @@ export default function Gym() {
   const [histRatings, setHistRatings] = useState([])
   const [histReps, setHistReps]       = useState([])
   const [saveToast, setSaveToast] = useState(null)
+  const [sessionNote, setSessionNote] = useState('')
   const timerRef = useRef(null)
   const [restTimer, setRestTimer] = useState(null)
 
@@ -302,6 +303,7 @@ export default function Gym() {
       day_type: day.id,
       day_name: day.name,
       exercises,
+      notes: sessionNote.trim() || null,
     })
 
     if (error) {
@@ -360,6 +362,7 @@ export default function Gym() {
     setWeights(prev => ({ ...prev, ...cleared }))
     setRatings(prev => ({ ...prev, ...clearedRatings }))
     setRepLogs(prev => ({ ...prev, ...clearedReps }))
+    setSessionNote('')
 
     if (summary.increases.length > 0 || summary.hardFlags.length > 0) {
       setSaveToast(summary)
@@ -476,7 +479,20 @@ export default function Gym() {
             ))}
           </div>
 
-          <div className="px-4 mt-5">
+          <div className="px-4 mt-3">
+            <div className="bg-[#1e1e2a] rounded-2xl border border-white/5 p-4">
+              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-2">Session Notes</p>
+              <textarea
+                value={sessionNote}
+                onChange={e => setSessionNote(e.target.value)}
+                placeholder="How did the session feel? Any PRs, form cues, things to adjust next time..."
+                rows={3}
+                className="w-full bg-white/5 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:ring-1 focus:ring-white/20 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="px-4 mt-3">
             <button
               onClick={saveWorkout}
               disabled={workoutSaved === 'saving'}
@@ -675,6 +691,12 @@ function SessionCard({ session, onDelete }) {
 
       {open && (
         <div className="px-4 pb-4 space-y-5 border-t border-white/5 pt-3">
+          {session.notes && (
+            <div className="bg-white/5 rounded-xl px-4 py-3">
+              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mb-1">Session Note</p>
+              <p className="text-gray-300 text-sm">{session.notes}</p>
+            </div>
+          )}
           {!detailLoaded ? (
             <p className="text-gray-500 text-xs py-2">Loading...</p>
           ) : (
