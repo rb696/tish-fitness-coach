@@ -3,7 +3,7 @@ export const WORKOUT_DAYS = [
     id: 'push',
     name: 'Push',
     color: '#6366f1',
-    totalSets: 16,
+    totalSets: 13,
     exercises: [
       {
         id: 'push_1',
@@ -12,14 +12,6 @@ export const WORKOUT_DAYS = [
         repScheme: ['8-12', '8-12', '8-12'],
         restSeconds: 120,
         note: 'Shoulder-safe fixed path — primary chest movement',
-      },
-      {
-        id: 'push_3',
-        name: 'Machine Shoulder Press (fixed path)',
-        warmupSets: 2,
-        repScheme: ['8-12', '8-12', '8-12'],
-        restSeconds: 90,
-        note: 'Fixed path only — replaces Arnold Press for shoulder safety',
       },
       {
         id: 'push_db_ohp',
