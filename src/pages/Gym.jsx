@@ -1001,10 +1001,30 @@ function RestTimerPill({ timer, onSkip, onAdd15 }) {
 
 function CommentModal({ exercise, existing, onSave, onClose }) {
   const [text, setText] = useState(existing)
+  const [kbOffset, setKbOffset] = useState(0)
+
+  useEffect(() => {
+    function update() {
+      if (!window.visualViewport) return
+      const offset = window.innerHeight - window.visualViewport.offsetTop - window.visualViewport.height
+      setKbOffset(Math.max(0, offset))
+    }
+    window.visualViewport?.addEventListener('resize', update)
+    window.visualViewport?.addEventListener('scroll', update)
+    update()
+    return () => {
+      window.visualViewport?.removeEventListener('resize', update)
+      window.visualViewport?.removeEventListener('scroll', update)
+    }
+  }, [])
+
   return (
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5">
+      <div
+        className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5"
+        style={{ marginBottom: kbOffset }}
+      >
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-white font-bold">{exercise.name}</h2>
           <div className="flex gap-4">
