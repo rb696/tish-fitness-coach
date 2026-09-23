@@ -983,17 +983,19 @@ function CommentModal({ exercise, existing, onSave, onClose }) {
     <div className="fixed inset-0 z-50 flex items-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative w-full max-w-lg mx-auto bg-[#1e1e2a] rounded-t-3xl p-5">
-        <h2 className="text-white font-bold mb-1">{exercise.name}</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-white font-bold">{exercise.name}</h2>
+          <div className="flex gap-4">
+            <button onClick={onClose} className="text-gray-400 text-sm font-medium py-1 active:text-gray-200">Cancel</button>
+            <button onClick={() => onSave(text)} className="text-indigo-400 text-sm font-semibold py-1 active:text-indigo-300">Save</button>
+          </div>
+        </div>
         <p className="text-gray-400 text-sm mb-4">Session note</p>
         <textarea autoFocus value={text} onChange={e => setText(e.target.value)}
           placeholder="e.g. Increased to 80kg, felt strong, shoulder fine..."
           rows={3}
-          className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500 resize-none mb-4"
+          className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
         />
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 rounded-2xl bg-white/5 text-gray-400 font-semibold text-sm">Cancel</button>
-          <button onClick={() => onSave(text)} className="flex-1 py-3 rounded-2xl bg-indigo-500 text-white font-semibold text-sm active:bg-indigo-600">Save</button>
-        </div>
       </div>
     </div>
   )
