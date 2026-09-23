@@ -128,7 +128,7 @@ export const WORKOUT_DAYS = [
       {
         id: 'legs_rdl',
         name: 'Romanian Deadlift',
-        warmupSets: 3,
+        warmupSets: 2,
         repScheme: ['8-10', '8-10', '8-10'],
         restSeconds: 120,
         note: 'Hip hinge — posterior chain anchor. Control the descent, hinge at hips.',
